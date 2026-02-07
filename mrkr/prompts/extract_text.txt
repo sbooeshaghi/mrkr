@@ -1,0 +1,55 @@
+You are an expert at extracting cell type marker genes from scientific manuscripts.
+
+# Task
+Extract ALL cell type marker gene associations from the manuscript text below.
+
+# Extraction Guidelines
+
+## What to Extract
+For each cell type and marker gene pair you find:
+- Infer the species/organism (use Latin names with underscores: homo_sapiens, mus_musculus, etc.)
+- Extract the EXACT text as it appears for the cell type (group_label)
+- Extract the EXACT gene name/symbol as it appears (feature_label)
+- Extract a brief verbatim text snippet (50-150 chars) showing the relationship (source_rationale)
+- The source_rationale MUST include BOTH the cell type AND the gene name
+
+## Normalization Rules
+- group_name: Convert group_label to UPPERCASE (e.g., "naive CD4+ T cells" → "NAIVE CD4+ T CELL")
+- feature_name: Convert feature_label to UPPERCASE
+
+## Source Information
+- source_type: Always "text" for manuscript text extractions
+- source_rationale: Must be a verbatim excerpt from the manuscript that mentions BOTH the cell type and gene
+
+# Output Format
+
+Output ONLY a valid JSON object matching this exact schema:
+
+```json
+{
+  "extractions": [
+    {
+      "organism": "homo_sapiens",
+      "group_label": "naive CD4+ T cells",
+      "group_name": "NAIVE CD4+ T CELL",
+      "feature_label": "CD4",
+      "feature_name": "CD4",
+      "source_type": "text",
+      "source_rationale": "Clustering analysis revealed 19 distinct clusters including naive CD4+ T cells expressing high levels of CD4."
+    }
+  ]
+}
+```
+
+# Important
+- Return ONLY valid JSON (no markdown code blocks, no commentary)
+- Extract ALL cell type-marker gene pairs
+- Each extraction must be independently understandable
+- Infer organism for EACH extraction independently
+
+# Manuscript Text
+
+{manuscript_text}
+
+# JSON Output
+

@@ -1,0 +1,85 @@
+You are an expert at extracting cell type marker genes from scientific manuscripts and figures.
+
+# Task
+Extract ALL cell type marker gene associations from BOTH the manuscript text AND figures.
+
+# Known Cell Types from DEG Tables
+The following cell types were identified in the DEG tables. When possible, match extracted cell types to these names:
+
+{known_cell_types}
+
+# Extraction Guidelines
+
+## What to Extract
+Analyze BOTH the manuscript text AND all provided figures. For each cell type-marker gene pair:
+- Infer the species/organism (use Latin names with underscores: homo_sapiens, mus_musculus, etc.)
+- Extract EXACT text/labels as they appear in the source
+- Match cell types to known types when possible
+- Identify whether this came from text or figure (image)
+- Provide evidence showing the relationship
+
+## Cell Type Matching (IMPORTANT)
+- For group_name: Match group_label to the MOST APPROPRIATE known cell type from the list above
+- Use biological knowledge to match variants (e.g., "naive CD4+ T cells" matches "NAIVE CD4+ T CELL")
+- Be flexible with matching: "T cell" vs "T-cell" vs "T_cell", "CD4+" vs "CD4+", etc.
+- If no good match exists, normalize the group_label to UPPERCASE
+
+## Source Types
+- **TEXT**: Information from manuscript text → source_rationale is a verbatim excerpt (50-150 chars)
+- **IMAGE**: Information from a figure → source_rationale describes what the figure shows (50-150 chars)
+
+## Source Rationale Requirements
+- For TEXT: Brief verbatim excerpt showing the relationship
+- For IMAGE: Concise description (e.g., "Violin plot shows Cd19 expression in B cell cluster")
+  - Mention figure element type (heatmap, UMAP, violin plot, etc.)
+- MUST include BOTH the cell type AND gene name in ALL rationales
+
+## Normalization Rules
+- group_name: Matched known type OR UPPERCASE version of group_label
+- feature_name: Convert feature_label to UPPERCASE
+
+# Output Format
+
+Output ONLY a valid JSON object matching this exact schema:
+
+```json
+{
+  "extractions": [
+    {
+      "organism": "homo_sapiens",
+      "group_label": "naive CD4+ T cells",
+      "group_name": "NAIVE CD4+ T CELL",
+      "feature_label": "CD4",
+      "feature_name": "CD4",
+      "source_type": "text",
+      "source_rationale": "Naive CD4+ T cells were identified by CD4 marker expression."
+    },
+    {
+      "organism": "mus_musculus",
+      "group_label": "B cell",
+      "group_name": "B CELL",
+      "feature_label": "Cd19",
+      "feature_name": "CD19",
+      "source_type": "image",
+      "source_rationale": "Violin plot shows Cd19 expression in B cell cluster"
+    }
+  ]
+}
+```
+
+# Important
+- Return ONLY valid JSON (no markdown code blocks, no commentary)
+- Process BOTH text and figures together
+- Match to known cell types from DEG when possible
+- Clearly distinguish source_type: "text" vs "image"
+- Anchor with specific evidence in source_rationale
+- Infer organism for EACH extraction independently
+
+# Manuscript Text
+
+{manuscript_text}
+
+(FIGURE IMAGES PROVIDED ABOVE)
+
+# JSON Output
+

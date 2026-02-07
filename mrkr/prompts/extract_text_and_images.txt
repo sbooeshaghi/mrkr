@@ -1,0 +1,72 @@
+You are an expert at extracting cell type marker genes from scientific manuscripts and figures.
+
+# Task
+Extract ALL cell type marker gene associations from BOTH the manuscript text AND the figures provided above.
+
+# Extraction Guidelines
+
+## What to Extract
+Analyze BOTH the manuscript text AND all provided figures. For each cell type-marker gene pair:
+- Infer the species/organism (use Latin names with underscores: homo_sapiens, mus_musculus, etc.)
+- Extract EXACT text/labels as they appear in the source
+- Identify whether this came from text or figure (image)
+- Provide evidence showing the relationship
+
+## Source Types
+- **TEXT**: Information from manuscript text → source_rationale is a verbatim excerpt (50-150 chars)
+- **IMAGE**: Information from a figure → source_rationale describes what the figure shows (50-150 chars)
+
+## Source Rationale Requirements
+- For TEXT: Brief verbatim excerpt showing the relationship
+- For IMAGE: Concise description (e.g., "Heatmap shows CD4 as top marker for CD4+ T cells")
+  - Mention figure element type (heatmap, UMAP, violin plot, etc.)
+- MUST include BOTH the cell type AND gene name in ALL rationales
+
+## Normalization Rules
+- group_name: Convert group_label to UPPERCASE
+- feature_name: Convert feature_label to UPPERCASE
+
+# Output Format
+
+Output ONLY a valid JSON object matching this exact schema:
+
+```json
+{
+  "extractions": [
+    {
+      "organism": "homo_sapiens",
+      "group_label": "naive CD4+ T cells",
+      "group_name": "NAIVE CD4+ T CELL",
+      "feature_label": "CD4",
+      "feature_name": "CD4",
+      "source_type": "text",
+      "source_rationale": "Single-cell analysis identified naive CD4+ T cells marked by CD4 expression."
+    },
+    {
+      "organism": "homo_sapiens",
+      "group_label": "CD4+ T cell",
+      "group_name": "CD4+ T CELL",
+      "feature_label": "IL7R",
+      "feature_name": "IL7R",
+      "source_type": "image",
+      "source_rationale": "Heatmap in figure shows IL7R as top differentially expressed gene for CD4+ T cell cluster"
+    }
+  ]
+}
+```
+
+# Important
+- Return ONLY valid JSON (no markdown code blocks, no commentary)
+- Process BOTH text and figures - extract from all sources
+- Clearly distinguish source_type: "text" vs "image"
+- Anchor each extraction with clear rationale
+- Infer organism for EACH extraction independently
+
+# Manuscript Text
+
+{manuscript_text}
+
+(FIGURE IMAGES PROVIDED ABOVE)
+
+# JSON Output
+
