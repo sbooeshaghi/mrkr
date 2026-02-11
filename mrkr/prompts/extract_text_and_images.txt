@@ -8,19 +8,26 @@ Extract ALL cell type marker gene associations from BOTH the manuscript text AND
 ## What to Extract
 Analyze BOTH the manuscript text AND all provided figures. For each cell type-marker gene pair:
 - Infer the species/organism (use Latin names with underscores: homo_sapiens, mus_musculus, etc.)
-- Extract EXACT text/labels as they appear in the source
+- Extract EXACT text/labels as they appear in the source — preserve original capitalization
 - Identify whether this came from text or figure (image)
 - Provide evidence showing the relationship
 
 ## Source Types
-- **TEXT**: Information from manuscript text → source_rationale is a verbatim excerpt (50-150 chars)
-- **IMAGE**: Information from a figure → source_rationale describes what the figure shows (50-150 chars)
+- **TEXT**: Information from manuscript text → source_rationale is verbatim text from the manuscript
+- **IMAGE**: Information from a figure → source_rationale describes what the figure shows
 
-## Source Rationale Requirements
-- For TEXT: Brief verbatim excerpt showing the relationship
-- For IMAGE: Concise description (e.g., "Heatmap shows CD4 as top marker for CD4+ T cells")
-  - Mention figure element type (heatmap, UMAP, violin plot, etc.)
-- MUST include BOTH the cell type AND gene name in ALL rationales
+## source_rationale Rules (CRITICAL)
+For TEXT extractions:
+- Copy the EXACT text from the manuscript. Do NOT paraphrase, summarize, or modify in any way.
+- Copy COMPLETE sentences — never truncate with "..." or ellipsis.
+- The text must be an exact, contiguous substring of the manuscript that can be found via string matching.
+- If a sentence mentions both a cell type and a gene, copy the full sentence.
+
+For IMAGE extractions:
+- Write a concise description of what the figure shows (e.g., "Heatmap shows CD4 as top marker for CD4+ T cells")
+- Mention the figure element type (heatmap, UMAP, violin plot, etc.)
+
+- source_rationale MUST include BOTH the cell type AND gene name in ALL cases
 
 ## Normalization Rules
 - group_name: Convert group_label to UPPERCASE
@@ -31,18 +38,18 @@ Analyze BOTH the manuscript text AND all provided figures. For each cell type-ma
 Output ONLY a valid JSON object matching this exact schema:
 
 ```json
-{
+{{
   "extractions": [
-    {
+    {{
       "organism": "homo_sapiens",
       "group_label": "naive CD4+ T cells",
       "group_name": "NAIVE CD4+ T CELL",
       "feature_label": "CD4",
       "feature_name": "CD4",
       "source_type": "text",
-      "source_rationale": "Single-cell analysis identified naive CD4+ T cells marked by CD4 expression."
-    },
-    {
+      "source_rationale": "Single-cell analysis identified naive CD4+ T cells marked by high CD4 and IL7R expression."
+    }},
+    {{
       "organism": "homo_sapiens",
       "group_label": "CD4+ T cell",
       "group_name": "CD4+ T CELL",
@@ -50,17 +57,17 @@ Output ONLY a valid JSON object matching this exact schema:
       "feature_name": "IL7R",
       "source_type": "image",
       "source_rationale": "Heatmap in figure shows IL7R as top differentially expressed gene for CD4+ T cell cluster"
-    }
+    }}
   ]
-}
+}}
 ```
 
 # Important
 - Return ONLY valid JSON (no markdown code blocks, no commentary)
 - Process BOTH text and figures - extract from all sources
 - Clearly distinguish source_type: "text" vs "image"
-- Anchor each extraction with clear rationale
 - Infer organism for EACH extraction independently
+- For text extractions, source_rationale must be VERBATIM from the manuscript — never use "..." or ellipsis
 
 # Manuscript Text
 

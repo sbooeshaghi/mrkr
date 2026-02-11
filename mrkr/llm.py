@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import anthropic
 from anthropic.types import Message
@@ -129,12 +129,13 @@ def call_claude_json(
         img_count = len(image_paths) if image_paths else 0
         print(f"   🤖 Calling Claude ({img_count} images)...")
 
-    message = client.messages.create(
+    with client.messages.stream(
         model=config.anthropic_model,
-        max_tokens=65536,  # Maximum for Claude Sonnet 4.5 (64k output tokens)
-        temperature=0.0,  # Deterministic output for consistent JSON structure
+        max_tokens=32000,
+        temperature=0.0,
         messages=[{"role": "user", "content": content_parts}],
-    )
+    ) as stream:
+        message = stream.get_final_message()
 
     response_text = message.content[0].text
 
@@ -154,7 +155,19 @@ def call_claude_json(
                 f"Failed to extract JSON from response. Response text: {response_text[:1000]}"
             )
 
-        result = ExtractionsResult.model_validate_json(json_text)
+        # Try direct parsing first
+        try:
+            result = ExtractionsResult.model_validate_json(json_text)
+            return result, message
+        except Exception:
+            pass
+
+        # If direct parsing fails (e.g. truncated output), try json_repair
+        from json_repair import repair_json
+        repaired = repair_json(json_text, return_objects=True)
+        if verbose:
+            print(f"   ⚠️  JSON was malformed, repaired via json_repair")
+        result = ExtractionsResult.model_validate(repaired)
         return result, message
 
     except Exception as e:
@@ -168,7 +181,7 @@ def extract_from_text_and_images(
     manuscript_text: str,
     image_paths: Optional[List[Path]],
     source_id: str,
-    known_cell_types: Optional[List[str]] = None,
+    known_cell_types: Optional[Dict[str, List[str]]] = None,
     verbose: bool = False,
 ) -> Tuple[List[dict], Message]:
     """
@@ -180,7 +193,7 @@ def extract_from_text_and_images(
         manuscript_text: Manuscript content (can be empty if only images)
         image_paths: List of figure image paths (optional)
         source_id: Identifier for the source (e.g., filename)
-        known_cell_types: Optional list of known cell type names from DEG
+        known_cell_types: Optional dict of {data_id: [group_names]} from DEG
         verbose: Whether to print progress
 
     Returns:
@@ -202,10 +215,15 @@ def extract_from_text_and_images(
     # Prepare template variables
     template_vars = {"manuscript_text": manuscript_text}
 
-    # Add known cell types if provided
+    # Add known cell types if provided (dict of data_id -> group_names)
     if known_cell_types:
-        cell_types_list = "\n".join(f"  - {ct}" for ct in sorted(known_cell_types))
-        template_vars["known_cell_types"] = cell_types_list
+        sections = []
+        for data_id, group_names in known_cell_types.items():
+            lines = [f"## {data_id}"]
+            for gn in group_names:
+                lines.append(f"  - {gn}")
+            sections.append("\n".join(lines))
+        template_vars["known_cell_types"] = "\n\n".join(sections)
 
     # Inject variables into template
     prompt = prompt_template.format(**template_vars)
@@ -227,7 +245,7 @@ def extract_from_text_and_images(
             "source_type": ext.source_type,
             "source_rationale": ext.source_rationale.strip(),
             "source_id": source_id,
-            "data_id": None,  # Will be set during post-processing if DEG provided
+            "data_id": ext.data_id.strip() if ext.data_id else None,
             "metrics_pcorr": None,
             "metrics_logfc": None,
             "metrics_rank": None,

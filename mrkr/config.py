@@ -38,7 +38,7 @@ class Config:
     def __init__(self):
         """Initialize configuration from environment variables."""
         self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "")
-        self.anthropic_model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
+        self.anthropic_model = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-6")
         self.timeout = float(os.getenv("LLM_TIMEOUT", "600.0"))
 
     def validate(self):

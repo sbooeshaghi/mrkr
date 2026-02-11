@@ -86,6 +86,7 @@ def save_metrics(
     message: Message,
     processing_time_sec: float,
     num_extractions: int = 0,
+    command: str = "",
 ) -> None:
     """Save metrics to JSON file.
 
@@ -95,15 +96,16 @@ def save_metrics(
         message: Anthropic Message object with usage information
         processing_time_sec: Time taken for the LLM call in seconds
         num_extractions: Number of marker extractions returned
+        command: Full CLI command string for reproducibility
     """
     # Calculate cost breakdown
     cost_breakdown = calculate_anthropic_cost(message, model)
 
     # Build full metrics dictionary
     metrics = {
+        "command": command,
         "model": model,
-        "created_at": datetime.utcnow().isoformat() + 'Z',
-        "timestamp": int(datetime.now().timestamp()),
+        "created_at": int(datetime.now().timestamp()),
         "num_extractions": num_extractions,
         "processing_time_sec": round(processing_time_sec, 2),
         **cost_breakdown,

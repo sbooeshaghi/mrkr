@@ -21,7 +21,7 @@ def load_gene_map(gene_map_file: Optional[Path] = None, verbose: bool = False) -
     if gene_map_file is None:
         # Use packaged gmap.txt
         package_dir = Path(__file__).parent
-        gene_map_file = package_dir.parent / "archive" / "data" / "gmap.txt"
+        gene_map_file = package_dir / "data" / "gmap.txt"
 
     if not gene_map_file.exists():
         raise FileNotFoundError(f"Gene mapping file not found: {gene_map_file}")

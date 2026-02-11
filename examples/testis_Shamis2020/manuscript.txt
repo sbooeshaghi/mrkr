@@ -1,1 +1,1 @@
-/Users/sinabooeshaghi/projects/llmarkers/data/testis_Shamis2020/manuscript/manuscript.txt
+/Users/sinabooeshaghi/projects/markergeneextraction/llmarkers/data/testis_Shamis2020/manuscript/manuscript.txt

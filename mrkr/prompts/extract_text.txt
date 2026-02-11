@@ -8,37 +8,43 @@ Extract ALL cell type marker gene associations from the manuscript text below.
 ## What to Extract
 For each cell type and marker gene pair you find:
 - Infer the species/organism (use Latin names with underscores: homo_sapiens, mus_musculus, etc.)
-- Extract the EXACT text as it appears for the cell type (group_label)
-- Extract the EXACT gene name/symbol as it appears (feature_label)
-- Extract a brief verbatim text snippet (50-150 chars) showing the relationship (source_rationale)
-- The source_rationale MUST include BOTH the cell type AND the gene name
+- group_label: Copy the cell type name EXACTLY as it appears in the manuscript, character for character, including capitalization. If the manuscript says "Regenerative epithelial", write "Regenerative epithelial", NOT "regenerative epithelial".
+- feature_label: Copy the gene symbol EXACTLY as it appears in the manuscript, character for character.
+- source_rationale: Copy one or more complete sentences from the manuscript that mention BOTH the cell type and gene.
+- The source_rationale MUST include BOTH the cell type AND the gene name.
+
+## source_rationale Rules (CRITICAL)
+- Copy the EXACT text from the manuscript. Do NOT paraphrase, summarize, or modify in any way.
+- Copy COMPLETE sentences — never truncate with "..." or ellipsis.
+- The text must be an exact, contiguous substring of the manuscript that can be found via string matching.
+- If a sentence mentions both a cell type and a gene, copy the full sentence.
+- If multiple sentences are needed to capture context, copy all of them contiguously.
 
 ## Normalization Rules
-- group_name: Convert group_label to UPPERCASE (e.g., "naive CD4+ T cells" → "NAIVE CD4+ T CELL")
+- group_name: Convert group_label to UPPERCASE (e.g., "Naive CD4+ T cells" → "NAIVE CD4+ T CELL")
 - feature_name: Convert feature_label to UPPERCASE
 
 ## Source Information
 - source_type: Always "text" for manuscript text extractions
-- source_rationale: Must be a verbatim excerpt from the manuscript that mentions BOTH the cell type and gene
 
 # Output Format
 
 Output ONLY a valid JSON object matching this exact schema:
 
 ```json
-{
+{{
   "extractions": [
-    {
+    {{
       "organism": "homo_sapiens",
-      "group_label": "naive CD4+ T cells",
+      "group_label": "Naive CD4+ T cells",
       "group_name": "NAIVE CD4+ T CELL",
       "feature_label": "CD4",
       "feature_name": "CD4",
       "source_type": "text",
-      "source_rationale": "Clustering analysis revealed 19 distinct clusters including naive CD4+ T cells expressing high levels of CD4."
-    }
+      "source_rationale": "Clustering analysis revealed 19 distinct clusters including Naive CD4+ T cells expressing high levels of CD4 and IL7R."
+    }}
   ]
-}
+}}
 ```
 
 # Important
@@ -46,6 +52,8 @@ Output ONLY a valid JSON object matching this exact schema:
 - Extract ALL cell type-marker gene pairs
 - Each extraction must be independently understandable
 - Infer organism for EACH extraction independently
+- group_label and feature_label must match the manuscript EXACTLY — same capitalization, same spelling
+- source_rationale must be VERBATIM from the manuscript — never use "..." or ellipsis
 
 # Manuscript Text
 

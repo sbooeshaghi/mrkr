@@ -4,7 +4,7 @@ You are an expert at extracting cell type marker genes from scientific manuscrip
 Extract ALL cell type marker gene associations from the manuscript text below.
 
 # Known Cell Types from DEG Tables
-The following cell types were identified in the DEG tables. When possible, match extracted cell types to these names:
+The following cell types were identified in supplementary DEG tables. Each section header is a data source (file#sheet), and the items below it are the cell type names used in that source.
 
 {known_cell_types}
 
@@ -13,16 +13,31 @@ The following cell types were identified in the DEG tables. When possible, match
 ## What to Extract
 For each cell type and marker gene pair you find:
 - Infer the species/organism (use Latin names with underscores: homo_sapiens, mus_musculus, etc.)
-- Extract the EXACT text as it appears for the cell type (group_label)
-- Extract the EXACT gene name/symbol as it appears (feature_label)
-- Extract a brief verbatim text snippet (50-150 chars) showing the relationship (source_rationale)
+- Extract the EXACT text as it appears for the cell type (group_label) — preserve original capitalization
+- Extract the EXACT gene name/symbol as it appears (feature_label) — preserve original capitalization
+- Copy one or more complete sentences from the manuscript that mention BOTH the cell type and gene (source_rationale)
 - The source_rationale MUST include BOTH the cell type AND the gene name
 
-## Cell Type Matching (IMPORTANT)
-- For group_name: Match group_label to the MOST APPROPRIATE known cell type from the list above
-- Use biological knowledge to match variants (e.g., "naive CD4+ T cells" matches "NAIVE CD4+ T CELL")
-- Be flexible with matching: "T cell" vs "T-cell" vs "T_cell", "CD4+" vs "CD4+", etc.
-- If no good match exists, normalize the group_label to UPPERCASE
+## source_rationale Rules (CRITICAL)
+- Copy the EXACT text from the manuscript. Do NOT paraphrase, summarize, or modify in any way.
+- Copy COMPLETE sentences — never truncate with "..." or ellipsis.
+- The text must be an exact, contiguous substring of the manuscript that can be found via string matching.
+- If a sentence mentions both a cell type and a gene, copy the full sentence.
+- If multiple sentences are needed to capture context, copy all of them contiguously.
+
+## Cell Type Matching (CRITICAL)
+- For group_name: Match group_label to the MOST SPECIFIC known cell type from the lists above.
+- ALWAYS prefer the most specific subtype. For example:
+  - If the manuscript says "adipocytes expressed UCP1" and the DEG lists include both "ADIPOCYTE" and "ADIPOCYTE 1" through "ADIPOCYTE 7", you MUST determine which specific subtype is being referenced. If the context does not specify a subtype, use the parent name "ADIPOCYTE".
+  - If the manuscript discusses "spermatogonia cluster 1" and the DEG lists include "SPERMATOGONIA CELL 1", use "SPERMATOGONIA CELL 1" — not the generic "SPERMATOGONIA CELL".
+- Use biological knowledge to match naming variants (e.g., "naive CD4+ T cells" matches "NAIVE CD4+ T CELL").
+- Be flexible with formatting: "T cell" vs "T-cell", "CD4+" vs "CD4 positive", etc.
+- If no good match exists in the known cell types, normalize the group_label to UPPERCASE.
+
+## data_id Assignment
+- For each extraction, set data_id to the data source (file#sheet) from the known cell types list above that contains the matched group_name.
+- If the group_name appears in multiple sources, prefer the most specific source (e.g., a subtype-level sheet over an "all markers" sheet).
+- If no match, leave data_id as null.
 
 ## Normalization Rules
 - group_name: Matched known type OR UPPERCASE version of group_label
@@ -30,33 +45,35 @@ For each cell type and marker gene pair you find:
 
 ## Source Information
 - source_type: Always "text" for manuscript text extractions
-- source_rationale: Must be a verbatim excerpt from the manuscript that mentions BOTH the cell type and gene
 
 # Output Format
 
 Output ONLY a valid JSON object matching this exact schema:
 
 ```json
-{
+{{
   "extractions": [
-    {
+    {{
       "organism": "homo_sapiens",
       "group_label": "naive CD4+ T cells",
       "group_name": "NAIVE CD4+ T CELL",
       "feature_label": "CD4",
       "feature_name": "CD4",
       "source_type": "text",
-      "source_rationale": "Flow cytometry confirmed CD4 expression in naive CD4+ T cells."
-    }
+      "source_rationale": "Flow cytometry confirmed CD4 expression in naive CD4+ T cells alongside elevated IL7R levels.",
+      "data_id": "Supplementary Table 1#immune markers"
+    }}
   ]
-}
+}}
 ```
 
 # Important
 - Return ONLY valid JSON (no markdown code blocks, no commentary)
 - Extract ALL cell type-marker gene pairs
-- Match to known cell types whenever possible
+- Match to known cell types whenever possible, preferring the MOST SPECIFIC subtype
+- Set data_id to the matching source from the known cell types list
 - Infer organism for EACH extraction independently
+- source_rationale must be VERBATIM from the manuscript — never use "..." or ellipsis
 
 # Manuscript Text
 

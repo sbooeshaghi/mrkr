@@ -9,7 +9,9 @@ import click
 
 from .config import config
 from .extract import extract_markers
+from .generate import generate_celltypes_to_genes, generate_genes_to_celltypes
 from .map import map_gene_ids
+from .verify import verify_extractions
 
 
 def parse_file_list(
@@ -105,9 +107,19 @@ def cli():
     help="Output file for LLM metrics (token usage, costs, timing)",
 )
 @click.option(
+    "--cell-types",
+    "-c",
+    type=click.Path(exists=True, path_type=Path),
+    help="JSON file with known cell types (e.g., evidence_deg/extracted.json). "
+         "Extracts unique group_name values to guide LLM cell type matching.",
+)
+@click.option(
+    "--verify/--no-verify", default=True, help="Verify extractions against manuscript text (default: enabled)"
+)
+@click.option(
     "--verbose", "-v", is_flag=True, help="Verbose output showing progress and token usage"
 )
-def extract(manuscript, figures, deg, output, species, metrics, verbose):
+def extract(manuscript, figures, deg, output, species, metrics, cell_types, verify, verbose):
     """
     Extract cell type marker genes from manuscripts, figures, and/or DEG tables.
 
@@ -152,6 +164,26 @@ def extract(manuscript, figures, deg, output, species, metrics, verbose):
     figure_paths = list(figures) if figures else None
     deg_paths = list(deg) if deg else None
 
+    # Load known cell types from JSON file if provided
+    # Builds a dict of {data_id: sorted list of group_names} for per-source context
+    known_cell_types_list = None
+    if cell_types:
+        ct_data = json.loads(cell_types.read_text(encoding="utf-8"))
+        if isinstance(ct_data, list):
+            from collections import defaultdict
+            by_source = defaultdict(set)
+            for r in ct_data:
+                gn = r.get("group_name")
+                did = r.get("data_id", "unknown")
+                if gn:
+                    by_source[did].add(gn)
+            known_cell_types_list = {
+                did: sorted(gns) for did, gns in sorted(by_source.items())
+            }
+        if verbose and known_cell_types_list:
+            total = len(set(gn for gns in known_cell_types_list.values() for gn in gns))
+            click.echo(f"📋 Loaded {total} known cell types from {len(known_cell_types_list)} sources in {cell_types.name}")
+
     # Validate configuration
     try:
         config.validate()
@@ -164,6 +196,9 @@ def extract(manuscript, figures, deg, output, species, metrics, verbose):
         click.echo("\n🧬 mrkr extract - Marker gene extraction")
         click.echo("=" * 50)
 
+    # Build command string for metrics reproducibility
+    command_str = " ".join(sys.argv)
+
     # Run extraction
     try:
         results = extract_markers(
@@ -173,6 +208,9 @@ def extract(manuscript, figures, deg, output, species, metrics, verbose):
             species=species,
             verbose=verbose,
             metrics_path=metrics,
+            verify=verify,
+            known_cell_types=known_cell_types_list,
+            command=command_str,
         )
 
         # Save results
@@ -264,6 +302,159 @@ def map(input, output, gene_map, verbose):
         if verbose:
             import traceback
 
+            traceback.print_exc()
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("input", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--manuscript",
+    "-m",
+    required=True,
+    type=click.Path(exists=True, path_type=Path),
+    help="Manuscript text file to verify against",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    help="Output JSON file with verification results (default: overwrites input)",
+)
+@click.option(
+    "--verbose", "-v", is_flag=True, help="Verbose output"
+)
+def verify(input, manuscript, output, verbose):
+    """
+    Verify extractions against manuscript text.
+
+    Checks that source_rationale is found in the manuscript and that
+    group_label/feature_label align within the source_rationale.
+
+    \b
+    Examples:
+        # Verify and overwrite in place
+        mrkr verify markers.json -m manuscript.txt
+
+        # Verify and save to new file
+        mrkr verify markers.json -m manuscript.txt -o markers_verified.json
+    """
+    try:
+        manuscript_text = manuscript.read_text(encoding="utf-8")
+        records = json.loads(input.read_text(encoding="utf-8"))
+
+        if verbose:
+            print(f"\n🔍 Verifying {len(records)} records against {manuscript.name}...")
+
+        records = verify_extractions(manuscript_text, records, verbose=verbose)
+
+        # Count results (only text records get verified)
+        text_records = [r for r in records if r.get("source_type") == "text"]
+        verified = sum(1 for r in text_records if r.get("_verification", {}).get("all_verified", False))
+
+        out_path = output or input
+        out_path.write_text(json.dumps(records, indent=2), encoding="utf-8")
+
+        click.echo(f"\n✅ {verified}/{len(text_records)} text/image extractions fully verified")
+        click.echo(f"💾 Saved to: {out_path}")
+
+    except Exception as e:
+        click.echo(f"\n❌ Error during verification: {e}", err=True)
+        if verbose:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("input", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--mode",
+    required=True,
+    type=click.Choice(["celltypes-to-genes", "genes-to-celltypes"]),
+    help="Generation mode: celltypes-to-genes or genes-to-celltypes",
+)
+@click.option(
+    "--species",
+    "-s",
+    required=True,
+    help="Species Latin name (e.g., homo_sapiens)",
+)
+@click.option(
+    "--output",
+    "-o",
+    required=True,
+    type=click.Path(path_type=Path),
+    help="Output JSON file",
+)
+@click.option(
+    "--metrics",
+    type=click.Path(path_type=Path),
+    help="Output file for LLM metrics (token usage, costs, timing)",
+)
+@click.option(
+    "--verbose", "-v", is_flag=True, help="Verbose output"
+)
+def generate(input, mode, species, output, metrics, verbose):
+    """
+    Generate marker genes or predict cell types using LLM training knowledge.
+
+    Takes an extracted.json file and either generates marker genes for each
+    cell type (celltypes-to-genes) or predicts cell types from gene groups
+    (genes-to-celltypes). No manuscript or paper context is used.
+
+    \b
+    Examples:
+        # Generate marker genes for each cell type
+        mrkr generate extracted.json --mode celltypes-to-genes -s homo_sapiens -o generated.json
+
+        # Predict cell types from gene groups (anonymized)
+        mrkr generate extracted.json --mode genes-to-celltypes -s homo_sapiens -o predicted.json
+    """
+    # Validate configuration
+    try:
+        config.validate()
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise click.Abort()
+
+    if not verbose:
+        click.echo(f"\n🧬 mrkr generate - {mode}")
+        click.echo("=" * 50)
+
+    command_str = " ".join(sys.argv)
+
+    try:
+        if mode == "celltypes-to-genes":
+            results = generate_celltypes_to_genes(
+                input_path=input,
+                species=species,
+                verbose=verbose,
+                metrics_path=metrics,
+                command=command_str,
+            )
+        else:
+            results = generate_genes_to_celltypes(
+                input_path=input,
+                species=species,
+                verbose=verbose,
+                metrics_path=metrics,
+                command=command_str,
+            )
+
+        # Save results
+        output.write_text(json.dumps(results, indent=2), encoding="utf-8")
+
+        if not verbose:
+            click.echo(f"\n✅ Generated {len(results)} marker gene associations")
+            click.echo(f"💾 Saved to: {output}")
+        else:
+            click.echo(f"\n💾 Saved to: {output}")
+
+    except Exception as e:
+        click.echo(f"\n❌ Error during generation: {e}", err=True)
+        if verbose:
+            import traceback
             traceback.print_exc()
         sys.exit(1)
 

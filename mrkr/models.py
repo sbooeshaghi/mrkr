@@ -28,6 +28,10 @@ class ExtractionResponse(BaseModel):
     source_rationale: str = Field(
         description="Text snippet or figure description showing this relationship"
     )
+    data_id: Optional[str] = Field(
+        default=None,
+        description="Data source identifier (e.g., file#sheet from DEG tables)"
+    )
 
 
 class ExtractionsResult(BaseModel):
@@ -48,7 +52,7 @@ class Evidence(BaseModel):
     feature_label: str
     feature_name: str
     feature_id: Optional[str] = None
-    source_type: Literal["text", "image", "deg"]
+    source_type: Literal["text", "image", "deg", "generated", "predicted"]
     source_rationale: str
     source_id: str
     data_id: Optional[str] = None
@@ -57,3 +61,42 @@ class Evidence(BaseModel):
     metrics_pcorr: Optional[float] = None
     metrics_logfc: Optional[float] = None
     metrics_rank: Optional[int] = None
+
+
+# --- Generation models (for mrkr generate) ---
+
+
+class GeneratedMarker(BaseModel):
+    """A single generated marker gene association."""
+
+    group_name: str = Field(description="Cell type name (UPPERCASE)")
+    feature_name: str = Field(description="Gene symbol (UPPERCASE)")
+    rationale: str = Field(
+        description="Brief explanation of why this gene is a marker for this cell type"
+    )
+
+
+class GenerationResult(BaseModel):
+    """Container for generated marker genes (celltypes-to-genes mode)."""
+
+    generations: List[GeneratedMarker] = Field(
+        description="List of generated marker gene associations"
+    )
+
+
+class CellTypePrediction(BaseModel):
+    """A single cell type prediction for a gene group."""
+
+    group_id: str = Field(description="The anonymous group identifier (e.g., 'Group 1')")
+    predicted_cell_type: str = Field(description="Predicted cell type name (UPPERCASE)")
+    rationale: str = Field(
+        description="Brief explanation of why these genes indicate this cell type"
+    )
+
+
+class CellTypePredictionResult(BaseModel):
+    """Container for cell type predictions (genes-to-celltypes mode)."""
+
+    predictions: List[CellTypePrediction] = Field(
+        description="List of cell type predictions"
+    )

@@ -1,0 +1,58 @@
+You are an expert cell biologist and genomics researcher.
+
+# Task
+Below are groups of genes from a {species} single-cell RNA-seq experiment. Each group represents the marker genes for an unknown cell type. Based on the gene composition, predict what cell type each group represents. Use ONLY your training knowledge — do not reference any specific paper or dataset.
+
+# Species
+{species}
+
+# Gene Groups
+{gene_groups}
+
+# Guidelines
+
+## What to Predict
+For each gene group:
+- Analyze the genes and determine the most likely cell type they mark
+- Consider canonical markers, transcription factors, surface markers, and lineage-specific genes
+- Provide a concise rationale explaining how the gene combination points to this cell type
+- Use specific cell type names where possible (e.g., "ALVEOLAR MACROPHAGE" rather than just "MACROPHAGE")
+
+## Cell Type Naming
+- predicted_cell_type: UPPERCASE cell type name (e.g., MACROPHAGE, CD4+ T CELL, ADIPOCYTE)
+
+## Rationale
+- Write a brief 1-2 sentence explanation of the key genes that led to your prediction
+- Mention the most diagnostic genes in the group
+- Do NOT reference any specific paper or dataset
+
+# Output Format
+
+Output ONLY a valid JSON object matching this exact schema:
+
+```json
+{{
+  "predictions": [
+    {{
+      "group_id": "Group 1",
+      "predicted_cell_type": "MACROPHAGE",
+      "rationale": "CD68, CD163, and CSF1R are canonical macrophage markers, with MARCO indicating tissue-resident macrophage identity"
+    }},
+    {{
+      "group_id": "Group 2",
+      "predicted_cell_type": "CD4+ T CELL",
+      "rationale": "CD4, IL7R, and TCF7 indicate a CD4+ T cell population, with LEF1 suggesting a naive phenotype"
+    }}
+  ]
+}}
+```
+
+# Important
+- Return ONLY valid JSON (no markdown code blocks, no commentary)
+- Predict a cell type for ALL groups listed
+- Use only your training knowledge — do not reference specific papers or datasets
+- Be as specific as possible in cell type predictions
+- Provide one prediction per group
+
+# JSON Output
+
