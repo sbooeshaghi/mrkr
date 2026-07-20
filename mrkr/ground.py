@@ -129,14 +129,17 @@ def validate(claims: list, paper_text: Optional[str] = None) -> dict:
     r = {"span_ok": 0, "span_total": 0, "sub_ok": 0, "sub_total": 0, "label_ok": 0, "label_total": 0}
     for c in claims:
         span, summ = c.get("span_literal", ""), c.get("summary", "")
+        summ_lc = summ.lower()
         if paper_text is not None:
             r["span_total"] += 1
-            r["span_ok"] += span in paper_text
+            r["span_ok"] += span in paper_text            # exact: offsets depend on it
         for t in c.get("terms", []):
             ss, nl = t.get("sub_span"), t.get("normalized_label", "")
             if ss is not None:
                 r["sub_total"] += 1
-                r["sub_ok"] += ss in span
+                r["sub_ok"] += ss in span                 # exact: sub_offset depends on it
             r["label_total"] += 1
-            r["label_ok"] += nl in summ
+            # case-insensitive: the summary is a canonical rewrite; sentence-initial
+            # capitals / plurals ("Macrophages" vs "macrophage") are not real mismatches.
+            r["label_ok"] += nl.lower() in summ_lc
     return r
