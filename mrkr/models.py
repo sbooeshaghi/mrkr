@@ -42,6 +42,53 @@ class ExtractionsResult(BaseModel):
     )
 
 
+# --- Claim extraction models (the current format; LLM output = spans + labels, NO ids) ---
+
+
+class TermExtraction(BaseModel):
+    """A single grounded-claim term as emitted by the LLM. No ontology id — grounding adds it."""
+
+    sub_span: Optional[str] = Field(
+        default=None,
+        description="Verbatim substring of this claim's span_literal (the surface token), "
+                    "or null if the entity is not present in the sentence (implicit)",
+    )
+    normalized_label: str = Field(
+        description="Canonical name; MUST be a verbatim substring of this claim's summary"
+    )
+    term_type: Literal["gene", "celltype", "comparison", "tissue"] = Field(
+        description="gene | celltype | comparison | tissue"
+    )
+    direction: Optional[Literal["positive", "negative"]] = Field(
+        default=None,
+        description="Gene terms only: 'negative' if the cell type does NOT express the gene, "
+                    "else 'positive'",
+    )
+
+
+class ClaimExtraction(BaseModel):
+    """A single marker claim as emitted by the LLM (one target cell type + its marker terms)."""
+
+    span_literal: str = Field(
+        description="Verbatim, exact, contiguous substring of the paper stating the marker(s)"
+    )
+    summary: str = Field(
+        description="Normalized rewrite of span_literal; each normalized_label appears in it verbatim"
+    )
+    terms: List[TermExtraction] = Field(
+        description="Exactly one celltype term (the target) + one or more gene terms + "
+                    "optional comparison/tissue terms"
+    )
+
+
+class ClaimsResult(BaseModel):
+    """Container for all marker claims from the LLM."""
+
+    claims: List[ClaimExtraction] = Field(
+        description="List of marker claim objects"
+    )
+
+
 class Evidence(BaseModel):
     """Final output format for evidence record (uniform structure for all sources)."""
 

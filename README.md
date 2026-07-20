@@ -1,6 +1,33 @@
 # mrkr - Cell Type Marker Gene Extraction
 
-**mrkr** (marker) is a CLI tool that uses Claude AI to extract cell type marker genes from scientific manuscripts, figures, and differential expression tables.
+**mrkr** (marker) is a CLI tool that extracts cell type marker genes from scientific manuscripts and anchors them in ontologies.
+
+## The flow: extract, then ground
+
+The core is two steps with a hard line between them. The LLM proposes in natural language; the machine assigns the identifiers.
+
+```bash
+# 1. extract: LLM reads the paper -> claim objects (spans + normalized labels, NO ontology ids)
+mrkr extract -m manuscript.md -o claims.json
+
+# 2. ground: deterministic -> assign ids (gene -> Ensembl, celltype/comparison -> CL, tissue -> UBERON)
+mrkr ground claims.json -o grounded.json -m manuscript.md
+```
+
+A claim is a verbatim sentence plus a flat list of grounded terms:
+
+```json
+{
+  "span_literal": "cDC1 cells were distinguished from other myeloid cells by XCR1 and CLEC9A.",
+  "summary": "Conventional dendritic cell type 1 is distinguished from other myeloid cells by XCR1 and CLEC9A.",
+  "terms": [
+    {"sub_span": "cDC1", "normalized_label": "conventional dendritic cell type 1", "term_type": "celltype", "ontology_term": "CL:0000990", "exact": true},
+    {"sub_span": "XCR1", "normalized_label": "XCR1", "term_type": "gene", "ontology_term": "ENSG00000173578", "exact": true, "direction": "positive"}
+  ]
+}
+```
+
+The LLM never emits an id. Grounding assigns them: genes via the offline `gmap.txt`; cell types and tissue via OLS `tag_text` (singularized query, longest span-coverage → `exact`, coarse parents flagged `exact=false`). Every id traces to a verbatim span. See the LLMarkers design note (`llmarkers/docs/notes/mrkr_format_reframe_design_note.md`) for the full rationale.
 
 ## Features
 

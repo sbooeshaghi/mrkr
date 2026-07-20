@@ -1,11 +1,12 @@
 """Main extraction orchestration for mrkr."""
 
+import hashlib
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from .config import config
 from .deg import extract_from_deg_files
-from .llm import extract_from_text_and_images
+from .llm import extract_claims_from_text_and_images, extract_from_text_and_images
 from .metrics import save_metrics, Timer
 from .verify import verify_extractions
 
@@ -163,3 +164,90 @@ def extract_markers(
         results = verify_extractions(manuscript_text, results, verbose=verbose)
 
     return results
+
+
+def extract_claims(
+    manuscript_path: Optional[Path],
+    figure_paths: Optional[List[Path]] = None,
+    verbose: bool = False,
+    metrics_path: Optional[Path] = None,
+    validate: bool = True,
+    command: str = "",
+) -> List[dict]:
+    """
+    Extract marker CLAIM objects from a manuscript (± figures) — the current mrkr format.
+
+    Returns a list of grounded-ready claim dicts: {paper_id, source_hash, span_literal,
+    span_offset, summary, terms:[{sub_span, sub_offset, normalized_label, term_type,
+    ontology_term(None), exact(None), direction, provenance}]}. Ids are filled by `mrkr ground`.
+    """
+    if not manuscript_path and not figure_paths:
+        raise ValueError("extract_claims requires a manuscript and/or figures")
+
+    manuscript_text = manuscript_path.read_text(encoding="utf-8") if manuscript_path else ""
+    source_id = manuscript_path.name if manuscript_path else ", ".join(f.name for f in figure_paths)
+    source_hash = ("sha256:" + hashlib.sha256(manuscript_text.encode("utf-8")).hexdigest()
+                   if manuscript_text else None)
+
+    if verbose:
+        print(f"\n📄 Extracting claims from {source_id}...")
+
+    with Timer() as timer:
+        raw_claims, message = extract_claims_from_text_and_images(
+            manuscript_text=manuscript_text,
+            image_paths=figure_paths if figure_paths else None,
+            source_id=source_id,
+            verbose=verbose,
+        )
+
+    if metrics_path:
+        save_metrics(output_path=metrics_path, model=config.anthropic_model, message=message,
+                     processing_time_sec=timer.elapsed, num_extractions=len(raw_claims),
+                     command=command)
+
+    claims = []
+    for c in raw_claims:
+        span = c["span_literal"]
+        span_offset = None
+        if manuscript_text:
+            i = manuscript_text.find(span)
+            span_offset = [i, i + len(span)] if i >= 0 else None
+        terms = []
+        for t in c["terms"]:
+            ss = t.get("sub_span")
+            sub_offset = None
+            if ss:
+                j = span.find(ss)
+                sub_offset = [j, j + len(ss)] if j >= 0 else None
+            term = {
+                "sub_span": ss,
+                "sub_offset": sub_offset,
+                "normalized_label": t["normalized_label"],
+                "term_type": t["term_type"],
+                "ontology_term": None,
+                "exact": None,
+                "provenance": "explicit" if ss else "implicit",
+            }
+            if t["term_type"] == "gene":
+                term["direction"] = t.get("direction", "positive")
+            terms.append(term)
+        claims.append({
+            "paper_id": source_id or None,
+            "source_hash": source_hash,
+            "span_literal": span,
+            "span_offset": span_offset,
+            "summary": c["summary"],
+            "terms": terms,
+        })
+
+    if validate and manuscript_text:
+        from .ground import validate as validate_claims
+        r = validate_claims(claims, manuscript_text)
+        if verbose:
+            print(f"   🔍 validation — span {r['span_ok']}/{r['span_total']}, "
+                  f"sub_span {r['sub_ok']}/{r['sub_total']}, label {r['label_ok']}/{r['label_total']}")
+
+    if verbose:
+        print(f"\n✅ Extracted {len(claims)} marker claims")
+
+    return claims

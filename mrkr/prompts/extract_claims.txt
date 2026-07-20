@@ -1,0 +1,62 @@
+You are an expert at extracting cell type marker genes from scientific manuscripts.
+
+# Task
+Read the full manuscript below. Find every statement where a gene is reported as a (positive or
+negative) marker of a cell type. Emit a JSON array of claim objects.
+
+# Schema (per claim)
+
+- span_literal: a VERBATIM, exact, contiguous substring of the manuscript — the sentence stating
+  the marker(s). No edits, no ellipsis, no markdown. It must be findable by exact string match.
+- summary: a 1-2 sentence canonical rewrite of span_literal. Expand every acronym to its full
+  canonical form (IGF-I -> insulin-like growth factor I; ASPC -> adipose stem and progenitor
+  cell). Name entities explicitly. Write it so that each term's normalized_label below appears in
+  it VERBATIM.
+- terms: a list of term objects, each:
+  - sub_span: a VERBATIM substring of THIS claim's span_literal (the surface token, e.g. "ASPCs"),
+    or null if the entity is not present in this sentence.
+  - normalized_label: the canonical name; a VERBATIM substring of THIS claim's summary.
+  - term_type: one of "gene", "celltype", "comparison", "tissue".
+  - direction: for gene terms only — "negative" if the paper says the cell type does NOT express /
+    has lost the gene, otherwise "positive". Omit on non-gene terms.
+
+# Rules
+
+- ONE cell type per claim: exactly one term with term_type="celltype" (the target). It may have
+  one or more "gene" terms (all mark that target) and zero or more "comparison" and "tissue" terms.
+- If a sentence names several cell types, emit SEVERAL claims that REUSE the same span_literal.
+- term_type="comparison" is a cell type the marker is contrasted AGAINST ("distinguished from X",
+  "versus X"). Only emit it when the paper states it.
+- Do NOT emit ontology ids. Natural-language labels only.
+- Keep the author's full cell-type label — including any subtype qualifier or number — in
+  normalized_label (e.g. "adipose stem and progenitor cell 1", not the parent).
+- Prefer atomic terms: split a compound like "corneal epithelial cell" into a "tissue" ("cornea")
+  and a "celltype" ("epithelial cell") when natural.
+- If the manuscript has no marker statements, return an empty claims array.
+
+# Output Format
+
+Output ONLY a valid JSON object matching this exact schema (no markdown, no commentary):
+
+```json
+{{
+  "claims": [
+    {{
+      "span_literal": "cDC1 cells were distinguished from other myeloid cells by XCR1 and CLEC9A.",
+      "summary": "Conventional dendritic cell type 1 is distinguished from other myeloid cells by XCR1 and CLEC9A.",
+      "terms": [
+        {{"sub_span": "cDC1", "normalized_label": "conventional dendritic cell type 1", "term_type": "celltype"}},
+        {{"sub_span": "other myeloid cells", "normalized_label": "myeloid cell", "term_type": "comparison"}},
+        {{"sub_span": "XCR1", "normalized_label": "XCR1", "term_type": "gene", "direction": "positive"}},
+        {{"sub_span": "CLEC9A", "normalized_label": "CLEC9A", "term_type": "gene", "direction": "positive"}}
+      ]
+    }}
+  ]
+}}
+```
+
+# Manuscript Text
+
+{manuscript_text}
+
+# JSON Output

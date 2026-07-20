@@ -6,10 +6,11 @@ from typing import Dict, List, Optional, Tuple
 
 import anthropic
 from anthropic.types import Message
+from pydantic import BaseModel
 
 from .config import config
 from .image import process_image_for_api
-from .models import ExtractionsResult
+from .models import ClaimsResult, ExtractionsResult
 
 
 def load_prompt_template(template_name: str) -> str:
@@ -82,7 +83,8 @@ def call_claude_json(
     prompt: str,
     image_paths: Optional[List[Path]] = None,
     verbose: bool = False,
-) -> Tuple[ExtractionsResult, Message]:
+    result_model=ExtractionsResult,
+) -> Tuple[BaseModel, Message]:
     """
     Call Claude API with prompt and optional images, expecting JSON response.
 
@@ -90,9 +92,10 @@ def call_claude_json(
         prompt: The prompt text
         image_paths: Optional list of image file paths for vision mode
         verbose: Whether to print token usage
+        result_model: pydantic model to validate the response against
 
     Returns:
-        Tuple of (ExtractionsResult, Message) for metrics tracking
+        Tuple of (parsed result_model, Message) for metrics tracking
     """
     client = anthropic.Anthropic(api_key=config.anthropic_api_key)
 
@@ -157,7 +160,7 @@ def call_claude_json(
 
         # Try direct parsing first
         try:
-            result = ExtractionsResult.model_validate_json(json_text)
+            result = result_model.model_validate_json(json_text)
             return result, message
         except Exception:
             pass
@@ -167,7 +170,7 @@ def call_claude_json(
         repaired = repair_json(json_text, return_objects=True)
         if verbose:
             print(f"   ⚠️  JSON was malformed, repaired via json_repair")
-        result = ExtractionsResult.model_validate(repaired)
+        result = result_model.model_validate(repaired)
         return result, message
 
     except Exception as e:
@@ -255,3 +258,48 @@ def extract_from_text_and_images(
         print(f"   ✓ Extracted {len(extractions)} marker gene associations")
 
     return extractions, message
+
+
+def extract_claims_from_text_and_images(
+    manuscript_text: str,
+    image_paths: Optional[List[Path]],
+    source_id: str,
+    verbose: bool = False,
+) -> Tuple[List[dict], Message]:
+    """
+    Extract marker CLAIM objects (spans + labels, no ids) from a manuscript (± figures).
+
+    The LLM emits {span_literal, summary, terms:[{sub_span, normalized_label, term_type,
+    direction}]}. Grounding (mrkr.ground) assigns the ontology ids afterward.
+
+    Returns (list of raw claim dicts, Message).
+    """
+    prompt_template = load_prompt_template("extract_claims")
+    prompt = prompt_template.format(manuscript_text=manuscript_text)
+
+    result, message = call_claude_json(
+        prompt, image_paths=image_paths, verbose=verbose, result_model=ClaimsResult
+    )
+
+    claims = []
+    for c in result.claims:
+        terms = []
+        for t in c.terms:
+            term = {
+                "sub_span": t.sub_span.strip() if t.sub_span else None,
+                "normalized_label": t.normalized_label.strip(),
+                "term_type": t.term_type,
+            }
+            if t.term_type == "gene":
+                term["direction"] = t.direction or "positive"
+            terms.append(term)
+        claims.append({
+            "span_literal": c.span_literal,
+            "summary": c.summary.strip(),
+            "terms": terms,
+        })
+
+    if verbose:
+        print(f"   ✓ Extracted {len(claims)} marker claims")
+
+    return claims, message

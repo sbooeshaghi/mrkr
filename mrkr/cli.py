@@ -8,8 +8,9 @@ from typing import Optional, Tuple
 import click
 
 from .config import config
-from .extract import extract_markers
+from .extract import extract_claims, extract_markers
 from .generate import generate_celltypes_to_genes, generate_genes_to_celltypes
+from .ground import ground_claims, validate as validate_claims
 from .map import map_gene_ids
 from .query import (
     parse_query_heuristic,
@@ -62,12 +63,17 @@ def parse_file_list(
 @click.version_option(version="0.2.0", prog_name="mrkr")
 def cli():
     """
-    mrkr - Cell type marker gene extraction and mapping tool.
+    mrkr - Cell type marker gene extraction and ontology grounding.
 
-    Commands:
-        extract - Extract marker genes from manuscripts, figures, and DEG tables
-        map     - Map gene names to Ensembl IDs
-        query   - Resolve marker-profile queries against an LLMarkers SQLite DB
+    The core flow is two steps, with a hard line between them:
+        extract - LLM reads a paper -> claim objects (spans + labels, NO ids)
+        ground  - deterministic: assign ontology ids (gene->Ensembl, celltype->CL, tissue->UBERON)
+
+    Other commands:
+        map     - (legacy) map gene names to Ensembl IDs on old evidence records
+        verify  - check extractions against the manuscript
+        generate/select - LLM baselines (generate from names / select from DEG rows)
+        query   - resolve marker-profile queries against an LLMarkers SQLite DB
     """
     pass
 
@@ -209,23 +215,38 @@ def extract(manuscript, figures, deg, output, species, metrics, cell_types, veri
 
     # Run extraction
     try:
-        results = extract_markers(
-            manuscript_path=manuscript,
-            figure_paths=figure_paths,
-            deg_paths=deg_paths,
-            species=species,
-            verbose=verbose,
-            metrics_path=metrics,
-            verify=verify,
-            known_cell_types=known_cell_types_list,
-            command=command_str,
-        )
+        if manuscript or figure_paths:
+            # Current format: manuscript/figures -> grounded-ready CLAIM objects.
+            # (DEG-only still uses the legacy per-pair path below.)
+            results = extract_claims(
+                manuscript_path=manuscript,
+                figure_paths=figure_paths,
+                verbose=verbose,
+                metrics_path=metrics,
+                validate=verify,
+                command=command_str,
+            )
+            unit = "marker claims"
+        else:
+            # DEG-only: legacy per-(cell type, gene) evidence records (method=deg).
+            results = extract_markers(
+                manuscript_path=manuscript,
+                figure_paths=figure_paths,
+                deg_paths=deg_paths,
+                species=species,
+                verbose=verbose,
+                metrics_path=metrics,
+                verify=verify,
+                known_cell_types=known_cell_types_list,
+                command=command_str,
+            )
+            unit = "marker gene associations"
 
         # Save results
         output.write_text(json.dumps(results, indent=2), encoding="utf-8")
 
         if not verbose:
-            click.echo(f"\n✅ Extracted {len(results)} marker gene associations")
+            click.echo(f"\n✅ Extracted {len(results)} {unit}")
             click.echo(f"💾 Saved to: {output}")
         else:
             click.echo(f"\n💾 Saved to: {output}")
@@ -310,6 +331,65 @@ def map(input, output, gene_map, verbose):
         if verbose:
             import traceback
 
+            traceback.print_exc()
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("input", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--output", "-o", required=True, type=click.Path(path_type=Path),
+    help="Output JSON file with grounded claims",
+)
+@click.option(
+    "--manuscript", "-m", type=click.Path(exists=True, path_type=Path),
+    help="Optional manuscript, to validate span_literal against",
+)
+@click.option(
+    "--gene-map", type=click.Path(exists=True, path_type=Path),
+    help="Gene mapping file (default: packaged gmap.txt)",
+)
+@click.option("--verbose", "-v", is_flag=True, help="Verbose output")
+def ground(input, output, manuscript, gene_map, verbose):
+    """
+    Ground claim objects: assign ontology ids to each term (deterministic, no LLM).
+
+    Genes -> Ensembl (offline gmap.txt); cell types & comparisons -> CL, tissue -> UBERON (OLS).
+    mrkr extract never emits ids; this step assigns them.
+
+    \b
+    Example:
+        mrkr extract -m manuscript.md -o claims.json
+        mrkr ground claims.json -o grounded.json
+    """
+    if not verbose:
+        click.echo("\n🧬 mrkr ground - Ontology grounding")
+        click.echo("=" * 50)
+    try:
+        claims = json.loads(Path(input).read_text(encoding="utf-8"))
+        if not isinstance(claims, list):
+            raise ValueError(f"Expected a JSON array of claims, got {type(claims).__name__}")
+
+        ground_claims(claims, gene_map_file=str(gene_map) if gene_map else None)
+        output.write_text(json.dumps(claims, indent=2), encoding="utf-8")
+
+        terms = [t for c in claims for t in c.get("terms", [])]
+        genes = [t for t in terms if t.get("term_type") == "gene"]
+        cts = [t for t in terms if t.get("term_type") == "celltype"]
+        gg = sum(1 for t in genes if t.get("ontology_term"))
+        cg = sum(1 for t in cts if t.get("ontology_term"))
+        click.echo(f"\n✅ Grounded {len(claims)} claims")
+        click.echo(f"   genes: {gg}/{len(genes)} → Ensembl")
+        click.echo(f"   cell types: {cg}/{len(cts)} → CL")
+        if manuscript:
+            r = validate_claims(claims, Path(manuscript).read_text(encoding="utf-8"))
+            click.echo(f"   validation — span {r['span_ok']}/{r['span_total']}, "
+                       f"sub_span {r['sub_ok']}/{r['sub_total']}, label {r['label_ok']}/{r['label_total']}")
+        click.echo(f"💾 Saved to: {output}")
+    except Exception as e:
+        click.echo(f"\n❌ Error during grounding: {e}", err=True)
+        if verbose:
+            import traceback
             traceback.print_exc()
         sys.exit(1)
 
