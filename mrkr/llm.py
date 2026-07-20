@@ -132,13 +132,23 @@ def call_claude_json(
         img_count = len(image_paths) if image_paths else 0
         print(f"   🤖 Calling Claude ({img_count} images)...")
 
-    with client.messages.stream(
-        model=config.anthropic_model,
-        max_tokens=32000,
-        temperature=0.0,
-        messages=[{"role": "user", "content": content_parts}],
-    ) as stream:
-        message = stream.get_final_message()
+    def _stream(**extra):
+        with client.messages.stream(
+            model=config.anthropic_model,
+            max_tokens=32000,
+            messages=[{"role": "user", "content": content_parts}],
+            **extra,
+        ) as stream:
+            return stream.get_final_message()
+
+    # temperature=0 for determinism where supported; newer models deprecate it -> omit and retry.
+    try:
+        message = _stream(temperature=0.0)
+    except anthropic.BadRequestError as e:
+        if "temperature" in str(e).lower():
+            message = _stream()
+        else:
+            raise
 
     response_text = message.content[0].text
 
