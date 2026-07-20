@@ -150,7 +150,10 @@ def call_claude_json(
         else:
             raise
 
-    response_text = message.content[0].text
+    # models with extended thinking put a ThinkingBlock first; take the first text block
+    response_text = next(
+        (b.text for b in message.content if getattr(b, "type", None) == "text"), ""
+    )
 
     if verbose:
         print(
