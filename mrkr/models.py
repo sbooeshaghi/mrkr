@@ -52,7 +52,7 @@ class Evidence(BaseModel):
     feature_label: str
     feature_name: str
     feature_id: Optional[str] = None
-    source_type: Literal["text", "image", "deg", "generated", "predicted"]
+    source_type: Literal["text", "image", "deg", "generated", "predicted", "selected"]
     source_rationale: str
     source_id: str
     data_id: Optional[str] = None
@@ -99,4 +99,29 @@ class CellTypePredictionResult(BaseModel):
 
     predictions: List[CellTypePrediction] = Field(
         description="List of cell type predictions"
+    )
+
+
+# --- Selection models (for mrkr select) ---
+
+
+class SelectedMarker(BaseModel):
+    """A marker gene selected from DEG data."""
+
+    group_name: str = Field(
+        description="Cell type name (UPPERCASE, exactly as in input)"
+    )
+    feature_name: str = Field(
+        description="Gene symbol (UPPERCASE, exactly as in input)"
+    )
+    rationale: str = Field(
+        description="Brief explanation of why this gene is a marker for this cell type"
+    )
+
+
+class SelectionResult(BaseModel):
+    """Container for selected marker genes."""
+
+    selections: List[SelectedMarker] = Field(
+        description="List of selected markers"
     )

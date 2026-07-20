@@ -11,6 +11,13 @@ from .config import config
 from .extract import extract_markers
 from .generate import generate_celltypes_to_genes, generate_genes_to_celltypes
 from .map import map_gene_ids
+from .query import (
+    parse_query_heuristic,
+    parse_query_llm,
+    print_query_result,
+    resolve_query,
+)
+from .select import select_markers_from_deg
 from .verify import verify_extractions
 
 
@@ -60,6 +67,7 @@ def cli():
     Commands:
         extract - Extract marker genes from manuscripts, figures, and DEG tables
         map     - Map gene names to Ensembl IDs
+        query   - Resolve marker-profile queries against an LLMarkers SQLite DB
     """
     pass
 
@@ -367,6 +375,114 @@ def verify(input, manuscript, output, verbose):
 
 
 @cli.command()
+@click.argument("query_text", nargs=-1, required=True)
+@click.option(
+    "--db",
+    "db_path",
+    required=True,
+    type=click.Path(exists=True, path_type=Path),
+    help="LLMarkers SQLite database with papers/profiles tables.",
+)
+@click.option(
+    "--label",
+    help="Optional cell type label override for the structured query.",
+)
+@click.option(
+    "--context",
+    help="Optional biological or experimental context override.",
+)
+@click.option(
+    "--gene",
+    "genes",
+    multiple=True,
+    help="Marker gene symbol override. Can be provided multiple times.",
+)
+@click.option(
+    "--gene-map",
+    type=click.Path(exists=True, path_type=Path),
+    help="Gene mapping file for parsing query markers.",
+)
+@click.option(
+    "--organism",
+    "-s",
+    default="homo_sapiens",
+    help="Organism filter for searched profiles. Use empty string to search all organisms.",
+)
+@click.option(
+    "--top-n",
+    "-n",
+    default=10,
+    show_default=True,
+    type=int,
+    help="Number of consensus matches to print.",
+)
+@click.option(
+    "--parser",
+    type=click.Choice(["heuristic", "llm"]),
+    default="llm",
+    show_default=True,
+    help="How to parse the natural-language query into label/context/markers.",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    help="Optional output JSON path. If omitted, prints a readable report.",
+)
+def query(query_text, db_path, label, context, genes, gene_map, organism, top_n, parser, output):
+    """
+    Resolve a natural-language marker-profile query against LLMarkers.
+
+    The parser converts the query into a structured label/context/marker query.
+    Retrieval is deterministic: marker overlap uses Ensembl IDs, label matching
+    uses exact/partial token matching, and context matching uses source/paper text.
+
+    \b
+    Examples:
+        mrkr query "CCR8+ Tregs in tumors" --db docs/llmarkers.sqlite
+        mrkr query "exhausted T cells in melanoma" --gene PDCD1 --gene HAVCR2 --gene LAG3 --db docs/llmarkers.sqlite
+        mrkr query "TREM2+ macrophage" --db docs/llmarkers.sqlite -n 20 -o results.json
+    """
+    raw_query = " ".join(query_text).strip()
+    try:
+        if parser == "llm":
+            structured = parse_query_llm(
+                raw_query,
+                label=label,
+                context=context,
+                gene_labels=tuple(genes),
+                gene_map_file=gene_map,
+            )
+        else:
+            structured = parse_query_heuristic(
+                raw_query,
+                label=label,
+                context=context,
+                gene_labels=tuple(genes),
+                gene_map_file=gene_map,
+            )
+
+        organism_filter = organism or None
+        result = resolve_query(
+            db_path=db_path,
+            query=structured,
+            organism=organism_filter,
+            top_n=top_n,
+        )
+
+        if output:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(json.dumps(result, indent=2), encoding="utf-8")
+            click.echo(f"💾 Saved query results to: {output}")
+        else:
+            print_query_result(result, top_n=top_n)
+
+    except Exception as e:
+        click.echo(f"\n❌ Error during query: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
 @click.argument("input", type=click.Path(exists=True, path_type=Path))
 @click.option(
     "--mode",
@@ -453,6 +569,98 @@ def generate(input, mode, species, output, metrics, verbose):
 
     except Exception as e:
         click.echo(f"\n❌ Error during generation: {e}", err=True)
+        if verbose:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("input", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--top-n", "-n",
+    required=True,
+    type=int,
+    help="Number of top DEGs per cell type to show the LLM",
+)
+@click.option(
+    "--species", "-s",
+    required=True,
+    help="Species Latin name (e.g., homo_sapiens)",
+)
+@click.option(
+    "--output", "-o",
+    required=True,
+    type=click.Path(path_type=Path),
+    help="Output JSON file",
+)
+@click.option(
+    "--metrics",
+    type=click.Path(path_type=Path),
+    help="Output file for LLM metrics (token usage, costs, timing)",
+)
+@click.option(
+    "--anonymous", "-a", is_flag=True,
+    help="Anonymize cell type names as CLUSTER 1, CLUSTER 2, etc.",
+)
+@click.option(
+    "--verbose", "-v", is_flag=True, help="Verbose output"
+)
+def select(input, top_n, species, output, metrics, anonymous, verbose):
+    """
+    Select marker genes from DEG data using LLM biological knowledge.
+
+    Takes a DEG extracted.json file, shows the top N DEGs per cell type
+    to the LLM, and asks it to select which genes are markers.
+
+    \b
+    Examples:
+        # Select from top 100 DEGs
+        mrkr select evidence_deg/extracted.json -n 100 -s homo_sapiens -o selected.json
+
+        # Select from top 500 DEGs with metrics
+        mrkr select evidence_deg/extracted.json -n 500 -s homo_sapiens -o selected.json --metrics metrics.json -v
+    """
+    # Validate configuration
+    try:
+        config.validate()
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise click.Abort()
+
+    mode_label = "anonymous" if anonymous else "named"
+    if not verbose:
+        click.echo(f"\n🧬 mrkr select - Marker selection (top {top_n}, {mode_label})")
+        click.echo("=" * 50)
+
+    command_str = " ".join(sys.argv)
+
+    try:
+        # Load DEG records
+        deg_records = json.loads(input.read_text(encoding="utf-8"))
+
+        results = select_markers_from_deg(
+            deg_records=deg_records,
+            top_n=top_n,
+            species=species,
+            verbose=verbose,
+            metrics_path=metrics,
+            command=command_str,
+            anonymous=anonymous,
+        )
+
+        # Save results
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(results, indent=2), encoding="utf-8")
+
+        if not verbose:
+            click.echo(f"\n✅ Selected {len(results)} marker gene associations")
+            click.echo(f"💾 Saved to: {output}")
+        else:
+            click.echo(f"\n💾 Saved to: {output}")
+
+    except Exception as e:
+        click.echo(f"\n❌ Error during selection: {e}", err=True)
         if verbose:
             import traceback
             traceback.print_exc()

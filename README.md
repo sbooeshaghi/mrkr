@@ -10,6 +10,7 @@
 - 🤖 **Claude-powered**: Uses Anthropic's Claude for intelligent extraction with species inference
 - 🔄 **Unified output**: Consistent JSON format regardless of source type
 - 🎯 **Smart matching**: When DEG tables are provided, matches manuscript mentions to DEG cell type names
+- 🔎 **Grounded query**: Resolve natural-language marker-profile questions against an LLMarkers SQLite database
 
 ## Installation
 
@@ -63,6 +64,30 @@ mrkr -d deg1.xlsx -d deg2.csv -s homo_sapiens -o markers.json
 # Verbose mode (show token usage and progress)
 mrkr -m manuscript.md -d deg.xlsx -o markers.json -v
 ```
+
+### Query LLMarkers
+
+```bash
+# Resolve a marker-pattern query against an LLMarkers SQLite database
+mrkr query "TREM2+ macrophages in tumors" --db docs/llmarkers.sqlite
+
+# Add explicit marker genes when the natural-language query does not name them all
+mrkr query "exhausted T cells in melanoma" \
+  --gene PDCD1 --gene HAVCR2 --gene LAG3 \
+  --db docs/llmarkers.sqlite
+
+# Save the full evidence card JSON
+mrkr query "CCR8+ Tregs in tumors" --db docs/llmarkers.sqlite -o ccr8_treg_query.json
+```
+
+`mrkr query` uses an LLM by default to parse the natural-language prompt into a
+structured query containing a cell type label, optional context, and marker genes
+mapped to Ensembl IDs. Use `--parser heuristic` for an offline deterministic
+parser. After parsing, retrieval is deterministic: marker matches use Ensembl
+gene overlap, label matches use exact/partial token matching, and context
+matches use the source and paper text stored in the database. The command returns
+ranked evidence cards with profile IDs, paper titles, DOIs, shared genes, label
+relations, source sentences, and conservative relationship calls.
 
 ### Options
 
