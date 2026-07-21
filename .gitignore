@@ -44,10 +44,7 @@ Thumbs.db
 *.npz
 checkpoints/
 models/
-uv.lock
 
-# Test outputs
-*.json
-!examples/*.json
+# Local table outputs
 *.tsv
 !data/*.tsv

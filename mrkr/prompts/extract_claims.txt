@@ -24,12 +24,18 @@ negative) marker of a cell type. Emit a JSON array of claim objects.
 
 - ONE cell type per claim: exactly one term with term_type="celltype" (the target). It may have
   one or more "gene" terms (all mark that target) and zero or more "comparison" and "tissue" terms.
+- Every claim must name at least one marker gene. Do not emit statements that refer to unnamed
+  markers in a figure, table, citation, or nearby sentence.
+- Every gene term must have a non-null sub_span copied from span_literal. Never infer a gene that
+  is not named in the evidence sentence.
 - If a sentence names several cell types, emit SEVERAL claims that REUSE the same span_literal.
 - term_type="comparison" is a cell type the marker is contrasted AGAINST ("distinguished from X",
   "versus X"). Only emit it when the paper states it.
 - Do NOT emit ontology ids. Natural-language labels only.
 - Keep the author's full cell-type label — including any subtype qualifier or number — in
   normalized_label (e.g. "adipose stem and progenitor cell 1", not the parent).
+- Copy span_literal exactly. Do not omit parentheticals, citations, punctuation, or words from
+  inside the quoted span.
 - Prefer atomic terms: split a compound like "corneal epithelial cell" into a "tissue" ("cornea")
   and a "celltype" ("epithelial cell") when natural.
 - If the manuscript has no marker statements, return an empty claims array.

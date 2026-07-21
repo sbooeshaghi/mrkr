@@ -1,0 +1,4 @@
+interface:
+  display_name: "mrkr Authoring"
+  short_description: "Audit and improve source-grounded marker statements"
+  default_prompt: "Audit this manuscript with mrkr and improve the machine-readable reporting of cell type marker evidence without changing the scientific claims."
