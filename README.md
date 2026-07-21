@@ -148,6 +148,16 @@ Create `.env` from `.env.example`, then set `ANTHROPIC_API_KEY`.
 cp .env.example .env
 ```
 
+## Authoring skill
+
+`skills/mrkr-authoring` is a Codex-compatible skill for manuscript review. It validates an existing
+`paper.onto.json`, compares each summary with its exact evidence, and flags missing comparison,
+species, tissue, assay, direction, or quantitative qualifiers. It never adds context that is absent
+from the source.
+
+Install the skill with the Codex skill installer from this repository, or link the directory into
+`$CODEX_HOME/skills/mrkr-authoring` during development.
+
 Cell type, comparison, and tissue grounding uses the EBI Ontology Lookup Service. The packaged
 gene map is human-only. For another organism, pass its name and a versioned two-column map with
 `--organism` and `--gene-map`. A document must use one organism for gene grounding.
