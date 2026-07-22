@@ -9,10 +9,12 @@ from .claims import assert_valid_document, make_claim_document, prepare_raw_clai
 from .config import config
 from .llm import extract_claims_from_text, load_prompt_template
 from .metrics import Timer, save_metrics
+from .organisms import get_organism
 
 
 def extract_claims(
     manuscript_path: Path,
+    organism: str,
     source_id: str | None = None,
     verbose: bool = False,
     metrics_path: Path | None = None,
@@ -23,12 +25,14 @@ def extract_claims(
 
     manuscript_text = manuscript_path.read_text(encoding="utf-8")
     source_id = source_id or manuscript_path.name
+    organism_record = get_organism(organism)
     if verbose:
         print(f"Extracting marker claims from {source_id}")
 
     with Timer() as timer:
         raw_claims, message = extract_claims_from_text(
             manuscript_text=manuscript_text,
+            organism_label=organism_record.label,
             verbose=verbose,
         )
 
@@ -45,6 +49,11 @@ def extract_claims(
         "response_id": getattr(message, "id", None),
         "prompt_template_sha256": "sha256:"
         + hashlib.sha256(prompt_template.encode("utf-8")).hexdigest(),
+        "organism": {
+            "key": organism_record.key,
+            "label": organism_record.label,
+            "ontology_term": organism_record.ontology_term,
+        },
         "preparation": preparation,
     }
 

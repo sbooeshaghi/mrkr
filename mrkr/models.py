@@ -15,7 +15,7 @@ class TermExtraction(BaseModel):
         description="Exact term text within span_literal, or null when implicit.",
     )
     normalized_label: str
-    term_type: Literal["gene", "celltype", "comparison", "tissue"]
+    term_type: Literal["gene", "celltype", "comparison", "tissue", "organism"]
     direction: Literal["positive", "negative"] | None = None
 
     @model_validator(mode="after")

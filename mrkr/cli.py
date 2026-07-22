@@ -82,6 +82,11 @@ def cli() -> None:
     help="Stable paper identifier stored in the artifact.",
 )
 @click.option(
+    "--organism",
+    required=True,
+    help="Organism whose marker claims should be extracted, for example homo_sapiens.",
+)
+@click.option(
     "--metrics",
     type=click.Path(path_type=Path),
     help="Optional JSON file for model, token, and timing metrics.",
@@ -91,6 +96,7 @@ def extract(
     manuscript: Path,
     output: Path,
     source_id: str | None,
+    organism: str,
     metrics: Path | None,
     verbose: bool,
 ) -> None:
@@ -100,6 +106,7 @@ def extract(
         config.validate()
         document = extract_claims(
             manuscript_path=manuscript,
+            organism=organism,
             source_id=source_id,
             verbose=verbose,
             metrics_path=metrics,
@@ -206,13 +213,28 @@ def validate_command(input: Path, manuscript: Path, report: Path | None) -> None
     result = validate_document(document, manuscript_text)
     if report:
         write_json_atomic(report, result)
+    for warning in result["warnings"][:10]:
+        click.echo(
+            f"WARNING {warning['code']} at {warning['path']}: {warning['message']}",
+            err=True,
+        )
+    if result["n_warnings"] > 10:
+        click.echo(f"... {result['n_warnings'] - 10} more warnings", err=True)
     if result["valid"]:
-        click.echo(f"Valid: {result['n_claims']} claims")
+        click.echo(
+            f"Valid: {result['n_claims']} claims; "
+            f"{result['n_warnings']} warnings"
+        )
         return
     for error in result["errors"][:10]:
         click.echo(
-            f"{error['code']} at {error['path']}: {error['message']}", err=True
+            f"ERROR {error['code']} at {error['path']}: {error['message']}",
+            err=True,
         )
     if result["n_errors"] > 10:
         click.echo(f"... {result['n_errors'] - 10} more errors", err=True)
     raise click.exceptions.Exit(1)
+
+
+if __name__ == "__main__":
+    cli()

@@ -109,12 +109,14 @@ def call_claude_json(
 
 def extract_claims_from_text(
     manuscript_text: str,
+    organism_label: str,
     verbose: bool = False,
 ) -> tuple[list[dict], Message]:
     """Extract raw marker claim objects from complete manuscript text."""
 
     prompt = load_prompt_template("extract_claims").format(
-        manuscript_text=manuscript_text
+        manuscript_text=manuscript_text,
+        organism_label=organism_label,
     )
     result, message = call_claude_json(
         prompt,

@@ -13,6 +13,7 @@ The workflow has a hard boundary between language-model output and programmatic 
 uv run mrkr extract \
   --manuscript manuscript.md \
   --source-id doi:10.x/example \
+  --organism homo_sapiens \
   --output paper.claims.json
 
 # 2. Assign Ensembl, Cell Ontology, and UBERON identifiers.
@@ -33,7 +34,9 @@ template digest used for the extraction.
 
 ## Claim document
 
-Each claim contains one target cell type, at least one marker gene, and any comparison or tissue terms stated by the authors.
+Each claim contains one target cell type, one organism, at least one marker gene, and any comparison
+or tissue terms stated by the authors. Extraction is scoped to the requested organism, so a human
+artifact excludes claims that apply only to mouse or another species.
 
 ```json
 {
@@ -47,6 +50,11 @@ Each claim contains one target cell type, at least one marker gene, and any comp
       "provider": "offline-gene-map",
       "organism": "homo_sapiens",
       "sha256": "sha256:..."
+    },
+    "organism": {
+      "provider": "NCBI Taxonomy",
+      "label": "Homo sapiens",
+      "ontology_term": "NCBITaxon:9606"
     },
     "ontology_service": {
       "provider": "OLS4",
@@ -76,8 +84,17 @@ Each claim contains one target cell type, at least one marker gene, and any comp
       "claim_id": "claim:...",
       "span_literal": "cDC1 cells were distinguished from other myeloid cells by XCR1.",
       "span_offset": [120, 183],
-      "summary": "conventional dendritic cell type 1 is distinguished from myeloid cell by XCR1.",
+      "summary": "In Homo sapiens, conventional dendritic cell type 1 is distinguished from myeloid cell by XCR1.",
       "terms": [
+        {
+          "sub_span": null,
+          "sub_offset": null,
+          "normalized_label": "Homo sapiens",
+          "term_type": "organism",
+          "provenance": "implicit",
+          "ontology_term": "NCBITaxon:9606",
+          "exact": true
+        },
         {
           "sub_span": "cDC1",
           "sub_offset": [0, 4],
@@ -128,11 +145,15 @@ A valid claim document satisfies these checks:
 2. Each evidence span is selected exactly by its manuscript offset.
 3. Each explicit term span is selected exactly within the evidence span.
 4. Each claim has exactly one target cell type and at least one marker gene.
-5. Each marker gene is named explicitly in the evidence span.
-6. Only genes have a positive or negative direction.
-7. Grounded terms match recorded gene-map or ontology-query metadata.
+5. Each claim has exactly one organism, whose normalized label occurs in its summary.
+6. Each marker gene is named explicitly in the evidence span.
+7. Only genes have a positive or negative direction.
+8. Grounded terms match recorded gene-map or ontology-query metadata.
 
-`mrkr validate --report report.json` writes a machine-readable error report and exits with status 1 when any check fails.
+`mrkr validate --report report.json` writes machine-readable `errors` and `warnings`. Errors violate
+the artifact contract and produce exit status 1. Warnings identify unresolved or coarsely grounded
+terms and normalized labels omitted from the readable summary without invalidating the
+source-grounded claim.
 
 ## Installation
 
@@ -158,9 +179,11 @@ from the source.
 Install the skill with the Codex skill installer from this repository, or link the directory into
 `$CODEX_HOME/skills/mrkr-authoring` during development.
 
-Cell type, comparison, and tissue grounding uses the EBI Ontology Lookup Service. The packaged
-gene map is human-only. For another organism, pass its name and a versioned two-column map with
-`--organism` and `--gene-map`. A document must use one organism for gene grounding.
+Cell type, comparison, and tissue grounding uses the EBI Ontology Lookup Service. Organisms use
+NCBI Taxonomy identifiers. The packaged human `gmap.txt` includes aliases; an Ensembl release 114
+canonical-symbol map takes priority when an alias is ambiguous. For another organism, pass its name
+and a versioned two-column map with `--organism` and `--gene-map`. A document uses one organism for
+extraction and gene grounding.
 Each ontology request is recorded with its query, retrieval time, selected identifier, and response
 digest. The resulting `paper.onto.json` is therefore the versioned result used downstream even if
 the remote ontology service changes later.

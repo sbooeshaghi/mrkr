@@ -13,6 +13,7 @@ from mrkr.ground import (
     ground_term,
 )
 from mrkr.map import load_gene_map
+from mrkr.organisms import get_organism
 
 
 def test_singularize():
@@ -41,6 +42,15 @@ def test_unresolved_gene_has_unknown_exactness():
 
     assert term["ontology_term"] is None
     assert term["exact"] is None
+
+
+def test_organism_grounding_is_deterministic():
+    term = {"term_type": "organism", "normalized_label": "Homo sapiens"}
+
+    ground_term(term, {}, get_organism("human"))
+
+    assert term["ontology_term"] == "NCBITaxon:9606"
+    assert term["exact"] is True
 
 
 def test_gene_grounding_rejects_source_normalization_conflict():

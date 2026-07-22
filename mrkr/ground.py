@@ -26,6 +26,7 @@ from typing import Optional
 
 from .claims import ONTO_SCHEMA, assert_valid_document
 from .map import load_gene_map, resolve_gene_id
+from .organisms import Organism, get_organism
 
 _DELIM = " ,.;:!?\t\n()[]{}\"'/\\-"
 _OLS_URL = "https://www.ebi.ac.uk/ols4/api/v2/tag_text"
@@ -115,7 +116,11 @@ def ground_label(label: str, ont: str):
     return hits[0]
 
 
-def ground_term(term: dict, gene_map: dict[str, str | None]) -> dict:
+def ground_term(
+    term: dict,
+    gene_map: dict[str, str | None],
+    organism: Organism | None = None,
+) -> dict:
     tt = term.get("term_type")
     lab = term.get("normalized_label") or ""
     if tt == "gene":
@@ -132,6 +137,16 @@ def ground_term(term: dict, gene_map: dict[str, str | None]) -> dict:
         term["ontology_term"], term["exact"] = ground_label(lab, "cl")
     elif tt == "tissue":
         term["ontology_term"], term["exact"] = ground_label(lab, "uberon")
+    elif tt == "organism":
+        if organism is None:
+            raise ValueError("organism is required to ground organism terms")
+        if lab.casefold() != organism.label.casefold():
+            raise ValueError(
+                f"claim organism {lab!r} does not match requested organism "
+                f"{organism.label!r}"
+            )
+        term["ontology_term"] = organism.ontology_term
+        term["exact"] = True
     # Preserve the exact source offset within span_literal.
     ss, span = term.get("sub_span"), term.get("_span_literal")
     if ss and span is not None:
@@ -140,7 +155,11 @@ def ground_term(term: dict, gene_map: dict[str, str | None]) -> dict:
     return term
 
 
-def ground_claims(claims: list, gene_map_file: Optional[str] = None) -> list:
+def ground_claims(
+    claims: list,
+    organism: Organism,
+    gene_map_file: Optional[str] = None,
+) -> list:
     """Ground every term in every claim. Loads the offline gene map once."""
     gene_map = load_gene_map(
         gene_map_file=Path(gene_map_file) if gene_map_file else None
@@ -149,7 +168,7 @@ def ground_claims(claims: list, gene_map_file: Optional[str] = None) -> list:
         span = c.get("span_literal", "")
         for t in c.get("terms", []):
             t["_span_literal"] = span
-            ground_term(t, gene_map)
+            ground_term(t, gene_map, organism)
             t.pop("_span_literal", None)
     return claims
 
@@ -157,11 +176,17 @@ def ground_claims(claims: list, gene_map_file: Optional[str] = None) -> list:
 def _gene_map_metadata(gene_map_file: Optional[str], organism: str) -> dict:
     path = Path(gene_map_file) if gene_map_file else Path(__file__).parent / "data" / "gmap.txt"
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    return {
+    metadata = {
         "provider": "offline-gene-map",
         "organism": organism,
         "sha256": f"sha256:{digest}",
     }
+    if gene_map_file is None:
+        canonical = Path(__file__).parent / "data" / "gmap_canonical.txt"
+        metadata["canonical_sha256"] = "sha256:" + hashlib.sha256(
+            canonical.read_bytes()
+        ).hexdigest()
+    return metadata
 
 
 def _document_ols_evidence(document: dict) -> list[dict]:
@@ -192,19 +217,27 @@ def ground_document(
 ) -> dict:
     """Ground a validated claim document and return a validated onto document."""
 
-    if not organism:
-        raise ValueError("organism is required for gene grounding")
-    if gene_map_file is None and organism != _PACKAGED_GENE_MAP_ORGANISM:
+    organism_record = get_organism(organism)
+    if gene_map_file is None and organism_record.key != _PACKAGED_GENE_MAP_ORGANISM:
         raise ValueError(
             "the packaged gene map supports only homo_sapiens; "
             "provide --gene-map for another organism"
         )
     assert_valid_document(document, manuscript_text)
     grounded = copy.deepcopy(document)
-    ground_claims(grounded["claims"], gene_map_file=gene_map_file)
+    ground_claims(
+        grounded["claims"],
+        organism=organism_record,
+        gene_map_file=gene_map_file,
+    )
     grounded["schema_version"] = ONTO_SCHEMA
     grounded["grounding"] = {
-        "genes": _gene_map_metadata(gene_map_file, organism),
+        "genes": _gene_map_metadata(gene_map_file, organism_record.key),
+        "organism": {
+            "provider": "NCBI Taxonomy",
+            "label": organism_record.label,
+            "ontology_term": organism_record.ontology_term,
+        },
         "ontology_service": {
             "provider": "OLS4",
             "endpoint": _OLS_URL,

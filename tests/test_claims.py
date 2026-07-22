@@ -19,7 +19,7 @@ MANUSCRIPT = "Macrophages express CD14 in human blood."
 RAW_CLAIMS = [
     {
         "span_literal": MANUSCRIPT,
-        "summary": "macrophage expresses CD14 in blood.",
+        "summary": "In Homo sapiens, macrophage expresses CD14 in blood.",
         "terms": [
             {
                 "sub_span": "Macrophages",
@@ -36,6 +36,11 @@ RAW_CLAIMS = [
                 "sub_span": "blood",
                 "normalized_label": "blood",
                 "term_type": "tissue",
+            },
+            {
+                "sub_span": "human",
+                "normalized_label": "Homo sapiens",
+                "term_type": "organism",
             },
         ],
     }
@@ -213,7 +218,9 @@ def test_prepare_raw_claims_reconstructs_formatted_marker_clause():
     raw = [
         {
             "span_literal": "TBET+CD16+ mNK cells",
-            "summary": "Mature natural killer cells express TBET and CD16.",
+            "summary": (
+                "In Homo sapiens, mature natural killer cells express TBET and CD16."
+            ),
             "terms": [
                 {
                     "sub_span": "mNK cells",
@@ -231,6 +238,11 @@ def test_prepare_raw_claims_reconstructs_formatted_marker_clause():
                     "normalized_label": "CD16",
                     "term_type": "gene",
                     "direction": "positive",
+                },
+                {
+                    "sub_span": None,
+                    "normalized_label": "Homo sapiens",
+                    "term_type": "organism",
                 },
             ],
         }
@@ -253,7 +265,10 @@ def test_prepare_raw_claims_reconstruction_keeps_context_terms():
     raw = [
         {
             "span_literal": "WAT cDC1s express DPP4 and are CD1C(-).",
-            "summary": "White adipose tissue cDC1 cells express DPP4, not CD1C.",
+            "summary": (
+                "In Homo sapiens, white adipose tissue conventional type 1 dendritic cell "
+                "expresses DPP4, not CD1C."
+            ),
             "terms": [
                 {
                     "sub_span": "cDC1s",
@@ -276,6 +291,11 @@ def test_prepare_raw_claims_reconstruction_keeps_context_terms():
                     "sub_span": "WAT",
                     "normalized_label": "white adipose tissue",
                     "term_type": "tissue",
+                },
+                {
+                    "sub_span": None,
+                    "normalized_label": "Homo sapiens",
+                    "term_type": "organism",
                 },
             ],
         }
@@ -364,3 +384,80 @@ def test_onto_document_rejects_empty_grounding_metadata():
 
     assert "grounding.genes" in codes
     assert "grounding.service" in codes
+
+
+def test_validation_reports_errors_and_grounding_warnings(monkeypatch):
+    document = make_claim_document(
+        source_id="paper.md", manuscript_text=MANUSCRIPT, raw_claims=RAW_CLAIMS
+    )
+
+    def fake_ground_label(label, ontology):
+        return {
+            ("macrophage", "cl"): ("CL:0000235", False),
+            ("blood", "uberon"): (None, None),
+        }[(label, ontology)]
+
+    monkeypatch.setattr("mrkr.ground.ground_label", fake_ground_label)
+    monkeypatch.setattr(
+        "mrkr.ground._document_ols_evidence",
+        lambda _document: [
+            {
+                "query": "macrophage",
+                "ontology": "cl",
+                "retrieved_at": "2026-01-01T00:00:00+00:00",
+                "response_sha256": "sha256:test",
+                "ontology_term": "CL:0000235",
+                "exact": False,
+            },
+            {
+                "query": "blood",
+                "ontology": "uberon",
+                "retrieved_at": "2026-01-01T00:00:00+00:00",
+                "response_sha256": "sha256:test",
+                "ontology_term": None,
+                "exact": None,
+            },
+        ],
+    )
+    grounded = ground_document(
+        document, organism="homo_sapiens", manuscript_text=MANUSCRIPT
+    )
+
+    report = validate_document(grounded, MANUSCRIPT)
+
+    assert report["valid"] is True
+    assert report["n_errors"] == 0
+    assert {warning["code"] for warning in report["warnings"]} == {
+        "term.grounding_coarse",
+        "term.grounding_unresolved",
+    }
+
+
+def test_validation_warns_when_nonorganism_label_is_missing_from_summary():
+    document = make_claim_document(
+        source_id="paper.md", manuscript_text=MANUSCRIPT, raw_claims=RAW_CLAIMS
+    )
+    document["claims"][0]["summary"] = "In Homo sapiens, a marker statement."
+
+    report = validate_document(document, MANUSCRIPT)
+
+    assert report["valid"] is True
+    assert any(
+        warning["code"] == "term.label_missing_summary"
+        for warning in report["warnings"]
+    )
+
+
+def test_validation_requires_organism_label_in_summary():
+    document = make_claim_document(
+        source_id="paper.md", manuscript_text=MANUSCRIPT, raw_claims=RAW_CLAIMS
+    )
+    document["claims"][0]["summary"] = "Macrophage expresses CD14 in blood."
+
+    report = validate_document(document, MANUSCRIPT)
+
+    assert report["valid"] is False
+    assert any(
+        error["code"] == "term.label_missing_summary"
+        for error in report["errors"]
+    )

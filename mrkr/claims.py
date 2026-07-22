@@ -13,7 +13,7 @@ from . import __version__
 
 CLAIMS_SCHEMA = "mrkr.claims.v1"
 ONTO_SCHEMA = "mrkr.onto.v1"
-TERM_TYPES = {"gene", "celltype", "comparison", "tissue"}
+TERM_TYPES = {"gene", "celltype", "comparison", "tissue", "organism"}
 GENE_DIRECTIONS = {"positive", "negative"}
 
 
@@ -367,14 +367,18 @@ def validate_document(
 ) -> dict[str, Any]:
     """Validate schema, biological cardinality, and exact source alignment."""
 
-    issues: list[ValidationIssue] = []
+    errors: list[ValidationIssue] = []
+    warnings: list[ValidationIssue] = []
 
     def add(code: str, path: str, message: str) -> None:
-        issues.append(ValidationIssue(code, path, message))
+        errors.append(ValidationIssue(code, path, message))
+
+    def warn(code: str, path: str, message: str) -> None:
+        warnings.append(ValidationIssue(code, path, message))
 
     if not isinstance(document, dict):
         add("document.type", "$", "document must be a JSON object")
-        return _report(0, issues)
+        return _report(0, errors, warnings)
 
     schema = document.get("schema_version")
     if schema not in {CLAIMS_SCHEMA, ONTO_SCHEMA}:
@@ -402,6 +406,47 @@ def validate_document(
             digest = genes.get("sha256")
             if not isinstance(digest, str) or not digest.startswith("sha256:"):
                 add("grounding.genes", "grounding.genes.sha256", "gene-map SHA-256 is required")
+            canonical_digest = genes.get("canonical_sha256")
+            if canonical_digest is not None and (
+                not isinstance(canonical_digest, str)
+                or not canonical_digest.startswith("sha256:")
+            ):
+                add(
+                    "grounding.genes",
+                    "grounding.genes.canonical_sha256",
+                    "canonical gene-map digest must be a SHA-256",
+                )
+        organism_grounding = grounding.get("organism")
+        if not isinstance(organism_grounding, dict):
+            add(
+                "grounding.organism",
+                "grounding.organism",
+                "organism grounding metadata is required",
+            )
+            organism_grounding = {}
+        if organism_grounding.get("provider") != "NCBI Taxonomy":
+            add(
+                "grounding.organism",
+                "grounding.organism.provider",
+                "organism grounding must use NCBI Taxonomy",
+            )
+        if not isinstance(organism_grounding.get("label"), str) or not organism_grounding.get(
+            "label"
+        ):
+            add(
+                "grounding.organism",
+                "grounding.organism.label",
+                "organism label is required",
+            )
+        organism_identifier = organism_grounding.get("ontology_term")
+        if not isinstance(organism_identifier, str) or not organism_identifier.startswith(
+            "NCBITaxon:"
+        ):
+            add(
+                "grounding.organism",
+                "grounding.organism.ontology_term",
+                "NCBI Taxonomy identifier is required",
+            )
         service = grounding.get("ontology_service")
         if not isinstance(service, dict):
             add("grounding.service", "grounding.ontology_service", "ontology-service metadata is required")
@@ -453,7 +498,7 @@ def validate_document(
     claims = document.get("claims")
     if not isinstance(claims, list):
         add("claims.type", "claims", "claims must be a JSON array")
-        return _report(0, issues)
+        return _report(0, errors, warnings)
 
     seen_claim_ids: set[str] = set()
     for claim_index, claim in enumerate(claims):
@@ -495,6 +540,7 @@ def validate_document(
 
         celltype_count = 0
         gene_count = 0
+        organism_count = 0
         for term_index, term in enumerate(terms):
             term_path = f"{base}.terms[{term_index}]"
             if not isinstance(term, dict):
@@ -505,10 +551,18 @@ def validate_document(
                 add("term.term_type", f"{term_path}.term_type", "unsupported term type")
             celltype_count += term_type == "celltype"
             gene_count += term_type == "gene"
+            organism_count += term_type == "organism"
 
             label = term.get("normalized_label")
             if not isinstance(label, str) or not label:
                 add("term.label", f"{term_path}.normalized_label", "normalized label is required")
+            elif isinstance(summary, str) and label.casefold() not in summary.casefold():
+                report = add if term_type == "organism" else warn
+                report(
+                    "term.label_missing_summary",
+                    f"{term_path}.normalized_label",
+                    "normalized label should occur in the claim summary",
+                )
 
             sub_span = term.get("sub_span")
             provenance = term.get("provenance")
@@ -570,6 +624,24 @@ def validate_document(
                         f"{term_path}.ontology_term",
                         "gene identifiers must be Ensembl identifiers",
                     )
+                if term_type == "organism" and ontology_term is not None and not str(
+                    ontology_term
+                ).startswith("NCBITaxon:"):
+                    add(
+                        "term.organism_identifier",
+                        f"{term_path}.ontology_term",
+                        "organism identifiers must be NCBI Taxonomy identifiers",
+                    )
+                if term_type == "organism" and (
+                    ontology_term != organism_grounding.get("ontology_term")
+                    or label.casefold()
+                    != str(organism_grounding.get("label", "")).casefold()
+                ):
+                    add(
+                        "term.organism_mismatch",
+                        term_path,
+                        "organism term must match document grounding metadata",
+                    )
                 ontology = {
                     "celltype": "cl",
                     "comparison": "cl",
@@ -581,21 +653,45 @@ def validate_document(
                         term_path,
                         "term grounding must match recorded ontology query evidence",
                     )
+                if ontology_term is None:
+                    warn(
+                        "term.grounding_unresolved",
+                        term_path,
+                        "term is present but has no stable identifier",
+                    )
+                elif exact is False:
+                    warn(
+                        "term.grounding_coarse",
+                        term_path,
+                        "term is grounded to a broader concept",
+                    )
 
         if celltype_count != 1:
             add("claim.celltype_count", f"{base}.terms", "claim must contain exactly one target cell type")
         if gene_count < 1:
             add("claim.gene_count", f"{base}.terms", "claim must contain at least one marker gene")
+        if organism_count != 1:
+            add(
+                "claim.organism_count",
+                f"{base}.terms",
+                "claim must contain exactly one organism",
+            )
 
-    return _report(len(claims), issues)
+    return _report(len(claims), errors, warnings)
 
 
-def _report(n_claims: int, issues: list[ValidationIssue]) -> dict[str, Any]:
+def _report(
+    n_claims: int,
+    errors: list[ValidationIssue],
+    warnings: list[ValidationIssue],
+) -> dict[str, Any]:
     return {
-        "valid": not issues,
+        "valid": not errors,
         "n_claims": n_claims,
-        "n_errors": len(issues),
-        "errors": [issue.as_dict() for issue in issues],
+        "n_errors": len(errors),
+        "errors": [issue.as_dict() for issue in errors],
+        "n_warnings": len(warnings),
+        "warnings": [issue.as_dict() for issue in warnings],
     }
 
 
