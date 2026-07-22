@@ -230,6 +230,7 @@ def prepare_raw_claims(
             claim["span_literal"] = exact_span
             reanchored += 1
         aligned_span = claim.get("span_literal") or ""
+        aligned_terms: list[dict[str, Any]] = []
         for term in claim.get("terms", []):
             sub_span = term.get("sub_span")
             if (
@@ -243,9 +244,25 @@ def prepare_raw_claims(
                 if shorthand:
                     term["sub_span"] = shorthand
                     expanded_shorthand += 1
+                else:
+                    excluded_terms.append(
+                        {
+                            "raw_index": index,
+                            "normalized_label": term.get("normalized_label"),
+                            "reason": "unaligned_marker_gene",
+                        }
+                    )
+                    continue
             elif sub_span and sub_span not in aligned_span:
                 term["sub_span"] = None
                 implicit_unaligned_terms += 1
+            aligned_terms.append(term)
+        claim["terms"] = aligned_terms
+        if not any(term.get("term_type") == "gene" for term in aligned_terms):
+            excluded.append(
+                {"raw_index": index, "reason": "no_aligned_marker_gene"}
+            )
+            continue
         prepared.append(claim)
 
     report = {

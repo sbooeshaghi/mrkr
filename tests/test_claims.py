@@ -258,6 +258,46 @@ def test_prepare_raw_claims_makes_unaligned_context_terms_implicit():
     assert_valid_document(document, manuscript)
 
 
+def test_prepare_raw_claims_excludes_unaligned_gene_terms():
+    raw = copy.deepcopy(RAW_CLAIMS)
+    raw[0]["terms"].insert(
+        2,
+        {
+            "sub_span": "LYZ",
+            "normalized_label": "LYZ",
+            "term_type": "gene",
+            "direction": "positive",
+        },
+    )
+
+    prepared, report = prepare_raw_claims(MANUSCRIPT, raw)
+
+    genes = [
+        term["normalized_label"]
+        for term in prepared[0]["terms"]
+        if term["term_type"] == "gene"
+    ]
+    assert genes == ["CD14"]
+    assert {
+        "raw_index": 0,
+        "normalized_label": "LYZ",
+        "reason": "unaligned_marker_gene",
+    } in report["excluded_terms"]
+
+
+def test_prepare_raw_claims_excludes_claim_when_all_genes_are_unaligned():
+    raw = copy.deepcopy(RAW_CLAIMS)
+    raw[0]["terms"][1]["sub_span"] = "LYZ"
+    raw[0]["terms"][1]["normalized_label"] = "LYZ"
+
+    prepared, report = prepare_raw_claims(MANUSCRIPT, raw)
+
+    assert prepared == []
+    assert {"raw_index": 0, "reason": "no_aligned_marker_gene"} in report[
+        "excluded_claims"
+    ]
+
+
 def test_prepare_raw_claims_reconstructs_formatted_marker_clause():
     manuscript = (
         "Flow cytometry identified TBET^(hi)EOMES^(int)PERFORIN^(hi)CD16+ "
