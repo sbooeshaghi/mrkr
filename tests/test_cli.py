@@ -15,6 +15,10 @@ def test_help_exposes_only_the_core_workflow():
     assert "\n  verify " not in result.output
     assert "\n  generate " not in result.output
 
+    extract_help = CliRunner().invoke(cli, ["extract", "--help"])
+    assert extract_help.exit_code == 0
+    assert "--response" in extract_help.output
+
 
 def test_ground_requires_the_source_manuscript(tmp_path):
     claims = tmp_path / "claims.json"

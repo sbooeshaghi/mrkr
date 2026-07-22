@@ -91,6 +91,11 @@ def cli() -> None:
     type=click.Path(path_type=Path),
     help="Optional JSON file for model, token, and timing metrics.",
 )
+@click.option(
+    "--response",
+    type=click.Path(path_type=Path),
+    help="Optional raw Anthropic response JSON retained for audit and parse recovery.",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Show extraction progress.")
 def extract(
     manuscript: Path,
@@ -98,6 +103,7 @@ def extract(
     source_id: str | None,
     organism: str,
     metrics: Path | None,
+    response: Path | None,
     verbose: bool,
 ) -> None:
     """Extract exact, normalized marker evidence from one manuscript."""
@@ -110,6 +116,7 @@ def extract(
             source_id=source_id,
             verbose=verbose,
             metrics_path=metrics,
+            response_path=response,
             validate=False,
             command="mrkr extract",
         )

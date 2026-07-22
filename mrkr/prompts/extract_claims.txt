@@ -5,6 +5,10 @@ Read the full manuscript below. Find every statement where a gene is reported as
 negative) marker of a cell type in {organism_label}. Do not extract claims that apply only to
 another organism. Emit a JSON object containing the claim objects.
 
+The requested organism is a filter, not a fact to impose on the manuscript. First determine whether
+the reported marker evidence applies to {organism_label}. Return an empty claims array when the
+paper contains no marker evidence from {organism_label}.
+
 # Schema (per claim)
 
 - span_literal: a VERBATIM, exact, contiguous substring of the manuscript — the sentence stating
@@ -36,6 +40,12 @@ another organism. Emit a JSON object containing the claim objects.
 - If a statement applies to several organisms including {organism_label}, emit the claim for
   {organism_label}. If it reports organism-specific markers, emit only the evidence applicable to
   {organism_label}.
+- Do not relabel a marker as applying to {organism_label} merely because the manuscript mentions
+  {organism_label} elsewhere, compares another organism with human reference data, or cites prior
+  human work. Exclude evidence from another organism and evidence whose organism is ambiguous in a
+  mixed-species manuscript.
+- A requested-organism claim must be supported by the study's data or analysis for
+  {organism_label}, or by an explicit statement that the marker applies to {organism_label}.
 - term_type="comparison" is a cell type the marker is contrasted AGAINST ("distinguished from X",
   "versus X"). Only emit it when the paper states it.
 - Do NOT emit ontology ids. Natural-language labels only.

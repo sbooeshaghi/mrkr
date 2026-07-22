@@ -18,6 +18,7 @@ def extract_claims(
     source_id: str | None = None,
     verbose: bool = False,
     metrics_path: Path | None = None,
+    response_path: Path | None = None,
     validate: bool = True,
     command: str = "",
 ) -> dict:
@@ -34,6 +35,7 @@ def extract_claims(
             manuscript_text=manuscript_text,
             organism_label=organism_record.label,
             verbose=verbose,
+            response_path=response_path,
         )
 
     prepared_claims, preparation = prepare_raw_claims(manuscript_text, raw_claims)

@@ -186,6 +186,7 @@ def prepare_raw_claims(
     reanchored = 0
     reconstructed = 0
     expanded_shorthand = 0
+    implicit_unaligned_terms = 0
     excluded_terms: list[dict[str, Any]] = []
     raw_list = list(raw_claims)
     for index, raw in enumerate(raw_list):
@@ -242,6 +243,9 @@ def prepare_raw_claims(
                 if shorthand:
                     term["sub_span"] = shorthand
                     expanded_shorthand += 1
+            elif sub_span and sub_span not in aligned_span:
+                term["sub_span"] = None
+                implicit_unaligned_terms += 1
         prepared.append(claim)
 
     report = {
@@ -250,6 +254,7 @@ def prepare_raw_claims(
         "reanchored_spans": reanchored,
         "reconstructed_spans": reconstructed,
         "expanded_gene_shorthand": expanded_shorthand,
+        "implicit_unaligned_terms": implicit_unaligned_terms,
         "excluded_claims": excluded,
         "excluded_terms": excluded_terms,
     }

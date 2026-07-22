@@ -210,6 +210,54 @@ def test_prepare_raw_claims_expands_gene_family_shorthand():
     assert report["expanded_gene_shorthand"] == 1
 
 
+def test_prepare_raw_claims_makes_unaligned_context_terms_implicit():
+    manuscript = "HRO photoreceptor cells express CRX in human cultures."
+    raw = copy.deepcopy(RAW_CLAIMS)
+    raw[0]["span_literal"] = manuscript
+    raw[0]["summary"] = (
+        "In Homo sapiens, photoreceptor cell expresses CRX in retinal organoid."
+    )
+    raw[0]["terms"] = [
+        {
+            "sub_span": "photoreceptor cells",
+            "normalized_label": "photoreceptor cell",
+            "term_type": "celltype",
+        },
+        {
+            "sub_span": "CRX",
+            "normalized_label": "CRX",
+            "term_type": "gene",
+            "direction": "positive",
+        },
+        {
+            "sub_span": "retinal organoid",
+            "normalized_label": "retinal organoid",
+            "term_type": "tissue",
+        },
+        {
+            "sub_span": "human",
+            "normalized_label": "Homo sapiens",
+            "term_type": "organism",
+        },
+    ]
+
+    prepared, report = prepare_raw_claims(manuscript, raw)
+    document = make_claim_document(
+        source_id="paper.md", manuscript_text=manuscript, raw_claims=prepared
+    )
+
+    tissue = next(
+        term
+        for term in document["claims"][0]["terms"]
+        if term["term_type"] == "tissue"
+    )
+    assert tissue["sub_span"] is None
+    assert tissue["sub_offset"] is None
+    assert tissue["provenance"] == "implicit"
+    assert report["implicit_unaligned_terms"] == 1
+    assert_valid_document(document, manuscript)
+
+
 def test_prepare_raw_claims_reconstructs_formatted_marker_clause():
     manuscript = (
         "Flow cytometry identified TBET^(hi)EOMES^(int)PERFORIN^(hi)CD16+ "

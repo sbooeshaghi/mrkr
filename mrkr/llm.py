@@ -55,6 +55,7 @@ def call_claude_json(
     prompt: str,
     result_model: type[ResultModel],
     verbose: bool = False,
+    response_path: Path | None = None,
 ) -> tuple[ResultModel, Message]:
     """Call Anthropic once and parse one typed JSON result."""
 
@@ -80,6 +81,12 @@ def call_claude_json(
         if "temperature" not in str(error).lower():
             raise
         message = stream()
+
+    if response_path is not None:
+        response_path.parent.mkdir(parents=True, exist_ok=True)
+        response_path.write_text(
+            message.model_dump_json(indent=2) + "\n", encoding="utf-8"
+        )
 
     response_text = next(
         (
@@ -111,6 +118,7 @@ def extract_claims_from_text(
     manuscript_text: str,
     organism_label: str,
     verbose: bool = False,
+    response_path: Path | None = None,
 ) -> tuple[list[dict], Message]:
     """Extract raw marker claim objects from complete manuscript text."""
 
@@ -122,6 +130,7 @@ def extract_claims_from_text(
         prompt,
         result_model=ClaimsResult,
         verbose=verbose,
+        response_path=response_path,
     )
 
     claims: list[dict] = []
